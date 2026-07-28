@@ -1,0 +1,16 @@
+langchain
+langchain-openai
+langchain-groq
+langchain-google-genai
+langchain-mcp-adapters
+python-dotenv
+streamlit
+langgraph-checkpoint
+langgraph-checkpoint-sqlite
+chromadb
+langchain-chroma
+langchain_community
+beautifulsoup4
+tavily-python
+ollama
+langchain-ollama
