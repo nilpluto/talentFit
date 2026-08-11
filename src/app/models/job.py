@@ -10,8 +10,6 @@ class Job(TalentFitModel):
 
     job_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
-    created_date: str | None = None
-    open_positions: int | None = Field(default=None, ge=0)
     designation: str | None = None
     geo: str | None = None
     business_unit: str | None = None
@@ -22,7 +20,6 @@ class Job(TalentFitModel):
     max_experience_years: float | None = Field(default=None, ge=0)
     location: str | None = None
     status: str = "unknown"
-    referral_allowed: bool = False
 
     @model_validator(mode="after")
     def validate_experience_range(self) -> "Job":

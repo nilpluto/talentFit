@@ -39,12 +39,12 @@ class JobVectorStore:
         self._ensure_filter_metadata()
 
     def _ensure_filter_metadata(self) -> None:
-        """Upgrade legacy records so native status/referral filters remain usable."""
+        """Upgrade legacy records so native status and Geo filters remain usable."""
         sample = self._collection.get(limit=1, include=["metadatas"])
         if not sample["ids"]:
             return
         sample_metadata = (sample["metadatas"] or [{}])[0] or {}
-        if "status" in sample_metadata and "referral_enabled" in sample_metadata:
+        if "status" in sample_metadata and "geo" in sample_metadata:
             return
 
         result = self._collection.get(include=["metadatas"])
@@ -55,7 +55,7 @@ class JobVectorStore:
             if isinstance(job_json, str):
                 job = Job.model_validate_json(job_json)
                 resolved["status"] = job.status
-                resolved["referral_enabled"] = job.referral_allowed
+                resolved["geo"] = (job.geo or "").strip().casefold()
             upgraded.append(resolved)
         if result["ids"]:
             self._collection.update(ids=result["ids"], metadatas=upgraded)
@@ -133,7 +133,7 @@ class JobVectorStore:
                     "job_json": job.model_dump_json(),
                     "content_hash": content_hash,
                     "status": job.status,
-                    "referral_enabled": job.referral_allowed,
+                    "geo": (job.geo or "").strip().casefold(),
                 }
                 for job, content_hash in zip(jobs, resolved_hashes, strict=True)
             ],
@@ -155,13 +155,13 @@ class JobVectorStore:
 
     @staticmethod
     def _job_filter(
-        *, open_only: bool, referral_only: bool
+        *, open_only: bool, india_only: bool = False
     ) -> dict[str, Any] | None:
         filters: list[dict[str, Any]] = []
         if open_only:
             filters.append({"status": "open"})
-        if referral_only:
-            filters.append({"referral_enabled": True})
+        if india_only:
+            filters.append({"geo": "india"})
         if len(filters) == 1:
             return filters[0]
         if filters:
@@ -169,14 +169,11 @@ class JobVectorStore:
         return None
 
     def get_jobs(
-        self, *, open_only: bool = False, referral_only: bool = False
+        self, *, open_only: bool = False, india_only: bool = False
     ) -> list[Job]:
         """Return indexed jobs matching recruiter-facing availability filters."""
         result = self._collection.get(
-            where=self._job_filter(
-                open_only=open_only,
-                referral_only=referral_only,
-            ),
+            where=self._job_filter(open_only=open_only, india_only=india_only),
             include=["metadatas"],
         )
         jobs = [
@@ -192,7 +189,7 @@ class JobVectorStore:
         *,
         limit: int = TOP_K_RETRIEVAL,
         open_only: bool = False,
-        referral_only: bool = False,
+        india_only: bool = False,
     ) -> list[JobSearchHit]:
         """Return jobs nearest to a precomputed query embedding."""
         if not query_embedding:
@@ -205,10 +202,7 @@ class JobVectorStore:
         result = self._collection.query(
             query_embeddings=[query_embedding],
             n_results=min(limit, self.count_jobs()),
-            where=self._job_filter(
-                open_only=open_only,
-                referral_only=referral_only,
-            ),
+            where=self._job_filter(open_only=open_only, india_only=india_only),
             include=["documents", "metadatas", "distances"],
         )
 

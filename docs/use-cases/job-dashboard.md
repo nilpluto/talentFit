@@ -2,29 +2,27 @@
 
 ## What this does
 
-The dashboard shows the jobs currently available in the ChromaDB index without requiring
-a resume.
+The dashboard shows India jobs currently available in the ChromaDB index without
+requiring a resume. Jobs from other countries and jobs with no Geo are never indexed.
 
 ## User steps
 
 1. Index an ATS file.
 2. Open **Job Dashboard**.
 3. Leave **Open jobs only** enabled to hide unavailable jobs.
-4. Enable **Referral-enabled only** when only referral opportunities are needed.
-5. Review the metrics and job table.
+4. Review the metrics and job table.
 
 ## Dashboard information
 
 - Total indexed jobs
 - Jobs matching the selected filters
-- Total open positions in the filtered jobs
-- Number of referral-enabled filtered jobs
-- The 12 supported ATS fields for each job
+- The 9 supported ATS fields for each job
 
 ## Simple flow
 
 ```text
-Filter toggles
+Geo = India
+  -> Open jobs toggle
   -> ChromaDB metadata filter
   -> matching indexed jobs
   -> dashboard metrics and table
@@ -40,4 +38,4 @@ Filter toggles
 
 ## Try it
 
-Index `resources/sample_ats_4_500_jobs.xlsx`, then switch the two filters on and off.
+Index `resources/sample_ats_4_500_jobs.xlsx`, then switch **Open jobs only** on and off.

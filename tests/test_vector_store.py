@@ -113,7 +113,7 @@ def test_content_hashes_are_available_after_upsert(vector_store: JobVectorStore)
     }
 
 
-def test_legacy_records_gain_filter_metadata() -> None:
+def test_legacy_records_gain_status_filter_metadata() -> None:
     client = chromadb.EphemeralClient()
     collection_name = f"talentfit-legacy-test-{uuid4().hex}"
     collection = client.get_or_create_collection(
@@ -121,9 +121,8 @@ def test_legacy_records_gain_filter_metadata() -> None:
     )
     legacy_job = Job(
         job_id="LEGACY",
-        title="Legacy open referral job",
+        title="Legacy open job",
         status="open",
-        referral_allowed=True,
     )
     collection.upsert(
         ids=[legacy_job.job_id],
@@ -133,18 +132,16 @@ def test_legacy_records_gain_filter_metadata() -> None:
     )
 
     migrated_store = JobVectorStore(client=client, collection_name=collection_name)
-    hits = migrated_store.search_jobs(
-        [1.0, 0.0], open_only=True, referral_only=True
-    )
+    hits = migrated_store.search_jobs([1.0, 0.0], open_only=True)
 
     assert [hit.job.job_id for hit in hits] == ["LEGACY"]
 
 
-def test_get_jobs_applies_availability_filters(vector_store: JobVectorStore) -> None:
+def test_get_jobs_applies_open_filter(vector_store: JobVectorStore) -> None:
     jobs = [
-        Job(job_id="OPEN-REF", title="Open referral", status="open", referral_allowed=True),
-        Job(job_id="OPEN-NO", title="Open no referral", status="open", referral_allowed=False),
-        Job(job_id="CLOSED-REF", title="Closed referral", status="closed", referral_allowed=True),
+        Job(job_id="OPEN-ONE", title="Open one", status="open"),
+        Job(job_id="OPEN-TWO", title="Open two", status="open"),
+        Job(job_id="CLOSED", title="Closed", status="closed"),
     ]
     vector_store.upsert_jobs(
         jobs,
@@ -153,13 +150,36 @@ def test_get_jobs_applies_availability_filters(vector_store: JobVectorStore) -> 
     )
 
     assert [job.job_id for job in vector_store.get_jobs(open_only=True)] == [
-        "OPEN-NO",
-        "OPEN-REF",
+        "OPEN-ONE",
+        "OPEN-TWO",
+    ]
+
+
+def test_india_filter_excludes_other_and_missing_geographies(
+    vector_store: JobVectorStore,
+) -> None:
+    jobs = [
+        Job(job_id="INDIA", title="India job", geo="India", status="open"),
+        Job(job_id="INDIA-UPPER", title="India uppercase", geo="INDIA", status="open"),
+        Job(job_id="USA", title="USA job", geo="USA", status="open"),
+        Job(job_id="MISSING", title="Missing Geo", status="open"),
+    ]
+    vector_store.upsert_jobs(
+        jobs,
+        [job.title for job in jobs],
+        [[1.0, 0.0], [0.9, 0.1], [0.99, 0.01], [0.98, 0.02]],
+    )
+
+    assert [job.job_id for job in vector_store.get_jobs(india_only=True)] == [
+        "INDIA",
+        "INDIA-UPPER",
     ]
     assert [
-        job.job_id
-        for job in vector_store.get_jobs(open_only=True, referral_only=True)
-    ] == ["OPEN-REF"]
+        hit.job.job_id
+        for hit in vector_store.search_jobs(
+            [1.0, 0.0], limit=10, open_only=True, india_only=True
+        )
+    ] == ["INDIA", "INDIA-UPPER"]
 
 
 def test_reject_invalid_search_arguments(vector_store: JobVectorStore) -> None:

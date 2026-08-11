@@ -34,16 +34,13 @@ def build_job_document(job: Job) -> str:
     return "\n".join(
         [
             f"Reference Number: {job.job_id}",
-            f"Job Created Date: {job.created_date or 'Not specified'}",
             f"Job Title: {job.title}",
-            f"Open Positions: {job.open_positions if job.open_positions is not None else 'Not specified'}",
             f"Designation: {job.designation or 'Not specified'}",
             f"Geo: {job.geo or 'Not specified'}",
             f"Business Unit: {job.business_unit or 'Not specified'}",
             f"Mandatory Skills: {_format_skills(job.mandatory_skills)}",
             f"Experience: {format_experience(job)}",
             f"Job Status: {job.status}",
-            f"Referral Enabled: {'Yes' if job.referral_allowed else 'No'}",
         ]
     )
 

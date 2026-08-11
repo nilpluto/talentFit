@@ -1,7 +1,6 @@
 """Read ATS exports and convert their rows into TalentFit job models."""
 
 import re
-from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -15,9 +14,7 @@ SUPPORTED_FILE_TYPES = {".csv", ".xls", ".xlsx"}
 REQUIRED_COLUMNS = {"reference_number", "job_title"}
 ATS_DISPLAY_COLUMNS = [
     "reference_number",
-    "job_created_date",
     "job_title",
-    "open_positions",
     "designation",
     "geo",
     "business_unit",
@@ -25,13 +22,10 @@ ATS_DISPLAY_COLUMNS = [
     "max_experience",
     "mandatory_skills",
     "job_status",
-    "referral_enabled",
 ]
 ATS_DISPLAY_LABELS = {
     "reference_number": "Reference Number",
-    "job_created_date": "Job Created Date",
     "job_title": "Job Title",
-    "open_positions": "Open Positions",
     "designation": "Designation",
     "geo": "Geo",
     "business_unit": "Business Unit",
@@ -39,7 +33,6 @@ ATS_DISPLAY_LABELS = {
     "max_experience": "Max Experience",
     "mandatory_skills": "Mandatory Skills",
     "job_status": "Job Status",
-    "referral_enabled": "Referral Enabled",
 }
 _COLUMN_ALIASES = {
     "job_id": "reference_number",
@@ -47,10 +40,6 @@ _COLUMN_ALIASES = {
     "job_code": "reference_number",
     "title": "job_title",
     "job_title": "job_title",
-    "created_date": "job_created_date",
-    "job_created_date": "job_created_date",
-    "open_position": "open_positions",
-    "open_positions": "open_positions",
     "designation": "designation",
     "geo": "geo",
     "business_unit": "business_unit",
@@ -63,15 +52,10 @@ _COLUMN_ALIASES = {
     "mandatory_skills": "mandatory_skills",
     "job_status": "job_status",
     "status": "job_status",
-    "referral_enabled": "referral_enabled",
-    "refferal_enabled": "referral_enabled",
-    "referral_allowed": "referral_enabled",
 }
 _SKILL_SEPARATOR = re.compile(r"[;,|]")
 _EXPERIENCE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _WHITESPACE = re.compile(r"\s+")
-_TRUE_VALUES = {"1", "true", "yes", "y"}
-_FALSE_VALUES = {"0", "false", "no", "n", ""}
 _STATUS_ALIASES = {
     "active": "open",
     "open": "open",
@@ -155,23 +139,10 @@ def _optional_text(value: object) -> str | None:
     return text or None
 
 
-def _optional_date_text(value: object) -> str | None:
-    if pd.isna(value):
-        return None
-    if isinstance(value, (pd.Timestamp, datetime, date)):
-        return value.strftime("%d-%b-%Y")
-    return _optional_text(value)
-
-
 def _optional_float(value: object) -> float | None:
     if pd.isna(value) or value == "":
         return None
     return float(value)
-
-
-def _optional_int(value: object) -> int | None:
-    number = _optional_float(value)
-    return int(number) if number is not None else None
 
 
 def clean_description(value: object) -> str:
@@ -198,6 +169,11 @@ def parse_experience_range(value: object) -> tuple[float | None, float | None]:
     if not numbers:
         return None, None
 
+    # ATS exports sometimes express short requirements in months. Convert those
+    # values to years so the Job model and matcher always use one consistent unit.
+    if ("month" in text or "mos" in text) and "year" not in text:
+        numbers = [round(number / 12, 2) for number in numbers]
+
     minimum = numbers[0]
     if len(numbers) >= 2:
         return minimum, numbers[1]
@@ -206,26 +182,32 @@ def parse_experience_range(value: object) -> tuple[float | None, float | None]:
     return minimum, minimum
 
 
+def parse_experience_columns(
+    minimum_value: object, maximum_value: object
+) -> tuple[float | None, float | None]:
+    """Resolve separate ATS experience columns that may themselves contain ranges."""
+    minimum_range = parse_experience_range(minimum_value)
+    maximum_range = parse_experience_range(maximum_value)
+
+    minimum = minimum_range[0]
+    maximum = maximum_range[1] if maximum_range[1] is not None else maximum_range[0]
+
+    # Some ATS exports put the complete range, such as ``2 to 5yrs``, in one
+    # column and leave the other column empty.
+    if minimum is None and maximum_range[0] is not None:
+        if maximum_range[1] != maximum_range[0]:
+            minimum = maximum_range[0]
+    if maximum_range == (None, None) and minimum_range[1] != minimum_range[0]:
+        maximum = minimum_range[1]
+
+    return minimum, maximum
+
+
 def _skill_list(value: object) -> list[str]:
     text = _text(value)
     if not text:
         return []
     return normalize_skills(_SKILL_SEPARATOR.split(text))
-
-
-def normalize_referral_flag(value: object) -> bool:
-    """Normalize common ATS boolean representations for referral eligibility."""
-    if pd.isna(value):
-        return False
-    if isinstance(value, bool):
-        return value
-
-    normalized = str(value).strip().casefold()
-    if normalized in _TRUE_VALUES:
-        return True
-    if normalized in _FALSE_VALUES:
-        return False
-    return False
 
 
 def normalize_job_status(value: object) -> str:
@@ -244,15 +226,14 @@ def dataframe_to_jobs(dataframe: pd.DataFrame) -> list[Job]:
 
     jobs: list[Job] = []
     for row in dataframe.to_dict(orient="records"):
-        minimum_experience = _optional_float(row.get("min_experience"))
-        maximum_experience = _optional_float(row.get("max_experience"))
+        minimum_experience, maximum_experience = parse_experience_columns(
+            row.get("min_experience"), row.get("max_experience")
+        )
 
         jobs.append(
             Job(
                 job_id=_text(row.get("reference_number")),
                 title=_text(row.get("job_title")),
-                created_date=_optional_date_text(row.get("job_created_date")),
-                open_positions=_optional_int(row.get("open_positions")),
                 designation=_optional_text(row.get("designation")),
                 geo=_optional_text(row.get("geo")),
                 business_unit=_optional_text(row.get("business_unit")),
@@ -260,7 +241,6 @@ def dataframe_to_jobs(dataframe: pd.DataFrame) -> list[Job]:
                 min_experience_years=minimum_experience,
                 max_experience_years=maximum_experience,
                 status=normalize_job_status(row.get("job_status")),
-                referral_allowed=normalize_referral_flag(row.get("referral_enabled")),
             )
         )
 

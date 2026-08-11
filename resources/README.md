@@ -8,7 +8,7 @@ These files are reusable development fixtures:
 - `sample_ats_3_100_jobs.xlsx` - larger ATS snapshot with 100 varied job records for
   upload, indexing, search, and performance checks.
 - `sample_ats_4_500_jobs.xlsx` - independent 500-job ATS snapshot with different
-  references, technologies, geographies, statuses, and referral settings.
+  references, technologies, geographies, and statuses.
 - `sample_jobs.csv` - legacy compact CSV fixture used by automated tests.
 - `sample_resume.pdf` - a text-based resume for PDF extraction and end-to-end matching.
 - `sample_resume_data_ai_engineer.pdf` - chronological data and AI engineering CV.

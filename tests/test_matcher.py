@@ -43,6 +43,25 @@ def test_match_has_weighted_score_and_skill_gaps(candidate: CandidateProfile) ->
     assert result.final_score == 71.83
 
 
+def test_match_uses_canonical_variants_for_mandatory_skills() -> None:
+    candidate = CandidateProfile(
+        name="BI Candidate",
+        experience_years=5,
+        skills=["PowerBI", "Service Now", "React.js"],
+    )
+    job = Job(
+        job_id="JOB-VARIANTS",
+        title="Application Developer",
+        mandatory_skills=["Power BI Desktop", "ServiceNow", "React JS"],
+    )
+
+    result = match_candidate_to_job(candidate, job, semantic_score=0.7)
+
+    assert result.matched_mandatory == ["power bi", "servicenow", "react"]
+    assert result.missing_mandatory == []
+    assert result.mandatory_score == 100
+
+
 @pytest.mark.parametrize(
     ("candidate_years", "minimum", "maximum", "expected"),
     [
@@ -82,7 +101,9 @@ def test_jobs_without_skill_requirements_do_not_penalize_candidate(
     assert result.final_score == 100
 
 
-def test_rank_returns_top_three_by_final_score(candidate: CandidateProfile) -> None:
+def test_rank_excludes_jobs_without_a_mandatory_skill_match(
+    candidate: CandidateProfile,
+) -> None:
     hits = [
         JobSearchHit(
             job=Job(
@@ -106,7 +127,26 @@ def test_rank_returns_top_three_by_final_score(candidate: CandidateProfile) -> N
 
     matches = rank_job_matches(candidate, hits, limit=3)
 
-    assert [match.job.job_id for match in matches] == ["JOB-1", "JOB-2", "JOB-3"]
+    assert [match.job.job_id for match in matches] == ["JOB-1", "JOB-2"]
+
+
+def test_rank_returns_no_jobs_when_no_mandatory_skills_match(
+    candidate: CandidateProfile,
+) -> None:
+    hits = [
+        JobSearchHit(
+            job=Job(
+                job_id="JOB-PYTHON",
+                title="Python Engineer",
+                mandatory_skills=["python", "django"],
+            ),
+            document="document",
+            distance=0.01,
+            semantic_score=0.99,
+        )
+    ]
+
+    assert rank_job_matches(candidate, hits, limit=3) == []
 
 
 def test_reject_invalid_semantic_score(candidate: CandidateProfile) -> None:

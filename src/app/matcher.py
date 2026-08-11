@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 from app.config import TOP_K_RESULTS
 from app.models import CandidateProfile, Job, MatchResult
-from app.skill_normalizer import normalize_skills
+from app.skill_normalizer import normalize_skills, skills_match
 from app.vector_store import JobSearchHit
 
 
@@ -18,8 +18,12 @@ def _skill_breakdown(
     candidate_skills: set[str], required_skills: list[str]
 ) -> tuple[list[str], list[str], float]:
     normalized_requirements = normalize_skills(required_skills)
-    matched = [skill for skill in normalized_requirements if skill in candidate_skills]
-    missing = [skill for skill in normalized_requirements if skill not in candidate_skills]
+    matched = [
+        skill
+        for skill in normalized_requirements
+        if any(skills_match(candidate_skill, skill) for candidate_skill in candidate_skills)
+    ]
+    missing = [skill for skill in normalized_requirements if skill not in matched]
     score = 100.0 if not normalized_requirements else 100.0 * len(matched) / len(normalized_requirements)
     return matched, missing, score
 
@@ -96,6 +100,7 @@ def rank_job_matches(
         match_candidate_to_job(candidate, hit.job, hit.semantic_score)
         for hit in search_hits
     ]
+    matches = [match for match in matches if match.matched_mandatory]
     matches.sort(
         key=lambda match: (match.final_score, match.semantic_score),
         reverse=True,

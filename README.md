@@ -17,13 +17,14 @@ stay on the machine running the application. No cloud API key is required.
 - Preview normalized ATS data before changing the index.
 - Insert new jobs, update changed jobs, skip unchanged jobs, and remove missing jobs.
 - Browse all indexed jobs from a recruiter-facing dashboard.
-- Filter dashboard and resume results by open status and referral availability.
+- Filter dashboard and resume results by open status.
+- Restrict dashboard and resume matching to jobs whose normalized Geo is India.
 - Read differently structured, multi-page, text-based PDF resumes.
 - Use Qwen to extract a validated candidate profile.
 - Verify professional experience using explicit totals and non-overlapping work dates.
 - Retrieve semantically similar jobs using Ollama embeddings and ChromaDB.
 - Rank results with deterministic skill, experience, and semantic scoring.
-- Show the top three jobs with matched and missing mandatory skills.
+- Show up to three jobs with matched and missing mandatory skills.
 - Export candidate and matching results as a CSV report.
 - Cache prepared resumes during the current session for faster repeated searches.
 - Clear uploads, resume results, or the complete local job index from the UI.
@@ -55,12 +56,10 @@ The dashboard shows:
 
 - Total indexed jobs
 - Jobs matching the active filters
-- Total open positions across the filtered jobs
-- Number of referral-enabled filtered jobs
-- A table containing the 12 supported recruiter-facing fields
+- A table containing the 9 supported recruiter-facing fields
 
-**Open jobs only** is enabled by default. **Referral-enabled only** is disabled by
-default. Both filters are applied directly through ChromaDB metadata.
+Only jobs with `Geo = India` are displayed. **Open jobs only** is enabled by default.
+Both restrictions are applied directly through ChromaDB metadata.
 
 ### Resume Match
 
@@ -69,7 +68,7 @@ Use this page after at least one ATS snapshot has been indexed.
 1. Upload a text-based PDF resume.
 2. Keep or change the job filters.
 3. Select **Analyze resume**.
-4. Review the extracted candidate profile and processing timings.
+4. Review the extracted candidate profile.
 5. Review the top job cards and mandatory-skill gaps.
 6. Download the CSV match report if required.
 
@@ -107,9 +106,7 @@ TalentFit keeps and indexes only the following fields:
 | Field | Required | Notes |
 |---|:---:|---|
 | Reference Number | Yes | Unique job identifier used for insert, update, and deletion decisions |
-| Job Created Date | No | Retained as recruiter-facing search context |
 | Job Title | Yes | Primary job title |
-| Open Positions | No | Parsed as a whole number |
 | Designation | No | Role level or internal designation |
 | Geo | No | Job geography or location |
 | Business Unit | No | Hiring business unit |
@@ -117,7 +114,6 @@ TalentFit keeps and indexes only the following fields:
 | Max Experience | No | Maximum years of experience |
 | Mandatory Skills | No | Split on commas, semicolons, or pipes and then normalized |
 | Job Status | No | Normalized for filtering |
-| Referral Enabled | No | Normalized to true or false |
 
 Only **Reference Number** and **Job Title** are mandatory. Extra spreadsheet columns are
 ignored and do not break the upload. Missing optional columns are created with empty
@@ -132,12 +128,9 @@ include:
 |---|---|
 | Reference Number | `Reference Number`, `job_id`, `job_code` |
 | Job Title | `Job Title`, `title` |
-| Job Created Date | `Job Created Date`, `created_date` |
-| Open Positions | `Open Position`, `Open Positions` |
 | Min Experience | `Min Exp`, `Min Experience`, `min_experience_years` |
 | Max Experience | `Max Exp`, `Max Experience`, `max_experience_years` |
 | Job Status | `Job Status`, `status` |
-| Referral Enabled | `Referral Enabled`, `Refferal Enabled`, `referral_allowed` |
 
 If two spreadsheet columns map to the same supported field, the first one is used.
 Duplicate reference numbers inside the same upload are rejected.
@@ -149,8 +142,6 @@ Duplicate reference numbers inside the same upload are rejected.
   `Amazon Web Services` to `aws`.
 - Statuses such as `active` and `published` become `open`; `filled`, `inactive`, and
   `archived` become `closed`; `hold` and `paused` become `on hold`.
-- Referral values such as `1`, `true`, `yes`, and `y` become true. Unknown or missing
-  referral values default to false.
 - Missing spreadsheet values are cleaned instead of being stored as `NaN` text.
 
 ## Full-snapshot and incremental synchronization
@@ -172,27 +163,24 @@ job missing from the small file will be removed.
 
 ## What is indexed
 
-For each job, TalentFit builds a consistent text document from only the 12 supported ATS
+For each job, TalentFit builds a consistent text document from only the 9 supported ATS
 fields. Unrelated spreadsheet columns and job-description fields are not included.
 
 Example:
 
 ```text
 Reference Number: TF-1001
-Job Created Date: 12-Jul-2026
 Job Title: Java Backend Engineer
-Open Positions: 2
 Designation: Senior Engineer
 Geo: Bengaluru
 Business Unit: Digital Engineering
 Mandatory Skills: java, spring boot, kafka, aws
 Experience: 5 to 8 years
 Job Status: open
-Referral Enabled: Yes
 ```
 
 Ollama converts this document into an embedding. ChromaDB stores the document, embedding,
-validated job JSON, content hash, status, and referral flag. The configured Chroma path
+validated job JSON, content hash, and status. The configured Chroma path
 persists across application restarts.
 
 ## Resume extraction and experience verification
@@ -243,13 +231,16 @@ distance.
 
 Filters are applied **before** retrieval:
 
+- The application always requires the normalized job Geo to equal `india`.
 - **Open jobs only** includes jobs whose normalized status is exactly `open`.
-- **Referral-enabled only** includes jobs whose referral flag is true.
-- Enabling both requires both conditions.
 
-TalentFit retrieves up to `TOP_K_RETRIEVAL` eligible jobs, then applies deterministic
-matching and returns up to `TOP_K_RESULTS` final jobs. The defaults are 10 retrieved and
-3 displayed.
+USA, missing-Geo, and other-country jobs are excluded before document creation and
+embedding, so they are not stored in ChromaDB. TalentFit retrieves up to
+`TOP_K_RETRIEVAL` eligible India jobs, then applies deterministic
+matching, removes jobs with no matched mandatory skill, and returns up to
+`TOP_K_RESULTS` final jobs. The defaults are 10 retrieved and at most 3 displayed. Fewer
+than three results—or no results—is valid when the mandatory-skill requirement is not
+met.
 
 ## Understanding the scores
 
@@ -258,7 +249,7 @@ ranks them.
 
 | Component | Weight | What it measures |
 |---|---:|---|
-| Mandatory skills | 50% | Percentage of normalized mandatory job skills present in the candidate profile |
+| Mandatory skills | 50% | Percentage of canonical mandatory technologies present in the candidate profile |
 | Optional skills | 15% | Percentage of optional skills present; the current ATS contract has no optional-skill column, so jobs receive this component in full |
 | Experience | 15% | Fit against the job's minimum and maximum experience range |
 | Semantic similarity | 20% | Overall contextual similarity between the candidate and job embeddings |
@@ -291,9 +282,15 @@ similarity carries a 20% weight, a semantic score of 64% contributes
 
 ### Mandatory-skill score
 
-This is exact normalized coverage. If a job requires four mandatory skills and the
-candidate has three, the mandatory score is 75%. The result card lists both the matched
-and missing skills.
+This uses controlled technology-name normalization. Equivalent labels such as
+`PowerBi`/`Power BI Desktop`, `Service Now`/`ServiceNow`, `.NET`/`Dot Net`,
+`React.js`/`React JS`, `ADF`/`Azure Data Factory`, and `GenAI`/`Generative AI` can match.
+If a job requires four canonical mandatory technologies and the candidate has three,
+the mandatory score is 75%. The result card lists both matched and missing skills.
+
+TalentFit does not use unrestricted fuzzy text matching for mandatory skills. Related
+but distinct technologies—such as Java and JavaScript, Power BI and Power Query, or
+React and React Native—remain separate to avoid misleading matches.
 
 ### Experience score
 
@@ -308,12 +305,11 @@ Scores are ranking aids for recruiters, not automated hiring decisions.
 
 Each result card displays:
 
-- Rank, job title, reference number, creation date, status, Geo, and experience range
+- Rank, job title, reference number, status, Geo, and experience range
 - Final match score and progress indicator
-- Open positions, designation, and business unit
+- Designation and business unit
 - Mandatory-skill score, experience score, and semantic similarity
 - Matched and missing mandatory skills
-- Referral availability
 
 The downloadable CSV adds candidate details and one row per returned job. It includes
 the recruiter-facing job fields, individual scores, and mandatory-skill gaps. The file
@@ -328,8 +324,6 @@ name is generated safely from the candidate's name.
 - Reanalyzing the same PDF with different filters reuses extraction and embedding work.
 - The cache key includes the PDF content and configured model names.
 - **Start over** clears the session's prepared-resume cache.
-- The UI reports time spent on PDF extraction, candidate extraction, candidate
-  embedding, vector search, and deterministic matching.
 
 The first model request after Ollama has been idle is normally slower because the model
 must be loaded. Later requests are usually faster while the model remains warm.
@@ -345,8 +339,8 @@ ChromaDB data is written to `CHROMA_PATH` (`data/chroma` by default). It remains
 after Streamlit or the computer restarts. The directory is intentionally ignored by Git
 because it is generated local data and may contain real ATS content.
 
-For larger datasets, upload a complete snapshot, allow initial embedding to finish, and
-use later incremental snapshots so unchanged jobs can be skipped.
+For larger datasets, upload a complete snapshot. Only its India rows are embedded. Use
+later incremental snapshots so unchanged India jobs can be skipped.
 
 ## Project structure
 
@@ -365,7 +359,7 @@ TalentFit/
 │   ├── embedding_service.py         # Ollama embedding requests
 │   ├── indexing_service.py          # Snapshot insert/update/skip/delete orchestration
 │   ├── matcher.py                   # Explainable deterministic scoring
-│   ├── resume_matching_service.py   # Resume preparation, search, ranking, and timings
+│   ├── resume_matching_service.py   # Resume preparation, caching, search, and ranking
 │   ├── resume_service.py            # PDF text extraction
 │   ├── search_service.py            # Candidate retrieval helper
 │   ├── skill_normalizer.py          # Skill cleanup and aliases
@@ -577,9 +571,9 @@ streamlit run streamlit_app.py --server.port 8502
 
 1. Start Ollama and the Streamlit application.
 2. Open **ATS Upload**.
-3. Upload `resources/sample_ats_4_500_jobs.xlsx`.
+3. Upload `resources/sample_ats_4_500_jobs.xlsx`; 167 India jobs are eligible.
 4. Review the preview and select **Confirm and index**.
-5. Open **Job Dashboard** and test the open/referral filters.
+5. Open **Job Dashboard**, confirm only India jobs appear, and test the open-job filter.
 6. Open **Resume Match**.
 7. Upload any sample resume PDF from `resources/`.
 8. Keep **Open jobs only** enabled and select **Analyze resume**.
@@ -663,8 +657,8 @@ deleted. Re-upload the correct complete snapshot to restore them.
 
 ### No jobs appear after filtering
 
-Disable one or both filters, or upload a snapshot containing jobs with status `open`
-and/or referral enabled.
+Disable **Open jobs only**, or upload a snapshot containing jobs with `Geo = India` and
+status `open`.
 
 ### Resume has no extractable text
 

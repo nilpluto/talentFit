@@ -3,16 +3,17 @@
 ## What this does
 
 This flow turns a text-based PDF resume into a candidate profile, finds relevant indexed
-jobs, and returns the top three explainable matches.
+India jobs, and returns up to three explainable matches. Jobs outside India and jobs
+without at least one matched mandatory skill are excluded.
 
 ## User steps
 
 1. Index an ATS file first.
 2. Open **Resume Match**.
 3. Upload a text-based PDF resume.
-4. Choose whether to search only open jobs and/or referral-enabled jobs.
+4. Choose whether to search only open jobs.
 5. Select **Analyze resume**.
-6. Review the candidate profile and top three results.
+6. Review the candidate profile and up to three results.
 7. Download the CSV report if needed.
 
 ## Simple flow
@@ -23,9 +24,11 @@ Resume PDF
   -> extract CandidateProfile with Qwen
   -> verify experience using employment dates
   -> create candidate embedding
-  -> filter and search ChromaDB
+  -> restrict Geo to India and apply the open-job filter
+  -> search ChromaDB
   -> score mandatory skills, experience, and semantic similarity
-  -> show the top three results and skill gaps
+  -> exclude jobs with no mandatory-skill match
+  -> show up to three results and skill gaps
 ```
 
 ## Matching output
@@ -60,7 +63,7 @@ Indexed job context includes:
 - Mandatory skills
 - Experience range
 - Geo and business unit
-- Job status and referral information
+- Job status
 
 Therefore, **Semantic 64%** means moderate contextual similarity. It does not mean the
 candidate matched 64% of the mandatory skills, and it is not a 64% probability of being
@@ -75,7 +78,7 @@ when the titles are not identical.
 
 | Component | Weight | Meaning |
 |---|---:|---|
-| Mandatory skills | 50% | Exact normalized mandatory-skill coverage |
+| Mandatory skills | 50% | Canonical, variant-aware mandatory-technology coverage |
 | Optional skills | 15% | Optional-skill coverage; full component when the job specifies none |
 | Experience | 15% | Fit against the job's minimum and maximum experience |
 | Semantic similarity | 20% | Overall contextual similarity |
@@ -84,6 +87,11 @@ Example: a semantic score of 64% contributes `64 × 0.20 = 12.8` points to the f
 score. The other three components provide the remaining points. This design keeps exact
 mandatory skills more important than semantic similarity while still recognizing
 related roles and terminology.
+
+Mandatory matching uses controlled aliases for different names of the same technology,
+including `PowerBi`/`Power BI Desktop`, `Service Now`/`ServiceNow`, `.NET`/`Dot Net`,
+`React.js`/`React JS`, and `ADF`/`Azure Data Factory`. It deliberately avoids general
+fuzzy matching, so Java does not match JavaScript and React does not match React Native.
 
 ## Performance behavior
 
@@ -102,10 +110,10 @@ Selecting **Start over** clears the session resume cache.
 | `src/app/candidate_extractor.py` | Produces the structured profile and verifies experience |
 | `src/app/models/candidate_profile.py` | Validates the candidate data |
 | `src/app/embedding_service.py` | Creates the candidate embedding |
-| `src/app/resume_matching_service.py` | Coordinates preparation, caching inputs, timing, and matching |
+| `src/app/resume_matching_service.py` | Coordinates preparation, caching, search, and matching |
 | `src/app/vector_store.py` | Applies job filters and performs semantic retrieval |
 | `src/app/matcher.py` | Calculates explainable deterministic scores |
-| `src/app/ui.py` | Upload, filters, result cards, timings, and CSV download |
+| `src/app/ui.py` | Upload, filters, result cards, and CSV download |
 
 ## Supported and unsupported resumes
 

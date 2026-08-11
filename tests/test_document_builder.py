@@ -15,8 +15,6 @@ def test_build_complete_job_document() -> None:
     job = Job(
         job_id="JOB-001",
         title="Java Backend Engineer",
-        created_date="02-Jan-2026",
-        open_positions=2,
         designation="Senior Engineer",
         geo="India",
         business_unit="FinTech",
@@ -24,22 +22,18 @@ def test_build_complete_job_document() -> None:
         min_experience_years=4,
         max_experience_years=7,
         status="open",
-        referral_allowed=True,
     )
 
     assert build_job_document(job) == "\n".join(
         [
             "Reference Number: JOB-001",
-            "Job Created Date: 02-Jan-2026",
             "Job Title: Java Backend Engineer",
-            "Open Positions: 2",
             "Designation: Senior Engineer",
             "Geo: India",
             "Business Unit: FinTech",
             "Mandatory Skills: java, spring boot, kafka",
             "Experience: 4 to 7 years",
             "Job Status: open",
-            "Referral Enabled: Yes",
         ]
     )
 

@@ -57,8 +57,8 @@ def test_match_resume_connects_all_pipeline_stages(
     )
 
     class FakeStore:
-        def search_jobs(self, embedding, *, limit, open_only, referral_only):
-            calls.append(("search", embedding, limit, open_only, referral_only))
+        def search_jobs(self, embedding, *, limit, open_only, india_only):
+            calls.append(("search", embedding, limit, open_only, india_only))
             return [hit]
 
     monkeypatch.setattr(service, "JobVectorStore", FakeStore)
@@ -74,7 +74,6 @@ def test_match_resume_connects_all_pipeline_stages(
         retrieval_limit=10,
         result_limit=3,
         open_only=True,
-        referral_only=True,
     )
 
     assert summary.candidate == candidate

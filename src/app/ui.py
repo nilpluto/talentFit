@@ -61,9 +61,7 @@ def build_match_report_csv(summary: ResumeMatchSummary) -> bytes:
         "candidate_skills",
         "rank",
         "job_id",
-        "job_created_date",
         "job_title",
-        "open_positions",
         "designation",
         "geo",
         "business_unit",
@@ -71,7 +69,6 @@ def build_match_report_csv(summary: ResumeMatchSummary) -> bytes:
         "max_experience",
         "mandatory_skills",
         "job_status",
-        "referral_enabled",
         "final_score",
         "mandatory_score",
         "experience_score",
@@ -93,9 +90,7 @@ def build_match_report_csv(summary: ResumeMatchSummary) -> bytes:
                 "candidate_skills": "; ".join(candidate.skills),
                 "rank": rank,
                 "job_id": match.job.job_id,
-                "job_created_date": match.job.created_date or "",
                 "job_title": match.job.title,
-                "open_positions": match.job.open_positions or 0,
                 "designation": match.job.designation or "",
                 "geo": match.job.geo or "",
                 "business_unit": match.job.business_unit or "",
@@ -103,7 +98,6 @@ def build_match_report_csv(summary: ResumeMatchSummary) -> bytes:
                 "max_experience": match.job.max_experience_years or "",
                 "mandatory_skills": "; ".join(match.job.mandatory_skills),
                 "job_status": match.job.status,
-                "referral_enabled": "Yes" if match.job.referral_allowed else "No",
                 "final_score": match.final_score,
                 "mandatory_score": match.mandatory_score,
                 "experience_score": match.experience_score,
@@ -132,7 +126,6 @@ def _render_match(position: int, match: MatchResult) -> None:
             " · ".join(
                 [
                     f"Reference: {match.job.job_id}",
-                    f"Created: {match.job.created_date or 'Not specified'}",
                     f"Status: {match.job.status}",
                     f"Geo: {match.job.geo or 'Not specified'}",
                     f"Experience: {format_experience(match.job)}",
@@ -142,10 +135,9 @@ def _render_match(position: int, match: MatchResult) -> None:
         score_column.metric("Match", f"{match.final_score:.1f}%")
         st.progress(match.final_score / 100)
 
-        details = st.columns(3)
-        details[0].metric("Open positions", match.job.open_positions or 0)
-        details[1].metric("Designation", match.job.designation or "Not specified")
-        details[2].metric("Business unit", match.job.business_unit or "Not specified")
+        details = st.columns(2)
+        details[0].metric("Designation", match.job.designation or "Not specified")
+        details[1].metric("Business unit", match.job.business_unit or "Not specified")
 
         score_columns = st.columns(3)
         score_columns[0].metric("Mandatory", f"{match.mandatory_score:.0f}%")
@@ -157,11 +149,6 @@ def _render_match(position: int, match: MatchResult) -> None:
         matched_column.write(_skill_text(match.matched_mandatory))
         missing_column.markdown("**Missing mandatory skills**")
         missing_column.write(_skill_text(match.missing_mandatory))
-
-        st.caption(
-            f"Referral enabled: {'Yes' if match.job.referral_allowed else 'No'}"
-        )
-
 
 def _render_candidate(summary: ResumeMatchSummary) -> None:
     candidate = summary.candidate
@@ -182,9 +169,7 @@ def build_job_dashboard_dataframe(jobs: list[Job]) -> pd.DataFrame:
         [
             {
                 "Reference Number": job.job_id,
-                "Job Created Date": job.created_date,
                 "Job Title": job.title,
-                "Open Positions": job.open_positions or 0,
                 "Designation": job.designation or "",
                 "Geo": job.geo or "",
                 "Business Unit": job.business_unit or "",
@@ -192,15 +177,10 @@ def build_job_dashboard_dataframe(jobs: list[Job]) -> pd.DataFrame:
                 "Max Experience": job.max_experience_years,
                 "Mandatory Skills": ", ".join(job.mandatory_skills),
                 "Job Status": job.status,
-                "Referral Enabled": job.referral_allowed,
             }
             for job in jobs
         ]
     )
-    if not dataframe.empty:
-        dataframe["Job Created Date"] = pd.to_datetime(
-            dataframe["Job Created Date"], errors="coerce"
-        )
     return dataframe
 
 
@@ -320,7 +300,9 @@ def render_ats_upload() -> None:
     summary = st.session_state.get("last_index_summary")
     if summary is not None:
         st.success(
-                f"Processed {summary.loaded_jobs} jobs: "
+                f"Read {summary.loaded_jobs} jobs and selected {summary.eligible_jobs} "
+                f"India jobs; {summary.excluded_jobs} non-India or missing-Geo jobs "
+                f"were ignored. "
                 f"{summary.inserted_jobs} inserted, {summary.updated_jobs} updated, "
                 f"{summary.deleted_jobs} removed, "
                 f"and {summary.skipped_jobs} unchanged. "
@@ -332,7 +314,7 @@ def render_ats_upload() -> None:
 def render_resume_match() -> None:
     """Render resume analysis and explainable matching controls."""
     st.header("Resume Match")
-    st.write("Upload a text-based PDF resume to find its top three job matches.")
+    st.write("Upload a text-based PDF resume to find up to three job matches.")
 
     upload = st.file_uploader(
         "Resume PDF",
@@ -340,21 +322,13 @@ def render_resume_match() -> None:
         key=f"resume_upload_{st.session_state['resume_upload_version']}",
     )
     st.subheader("Job filters")
-    st.caption("Filters are applied before the top matches are ranked.")
+    st.caption("India jobs only. Filters are applied before the top matches are ranked.")
     with st.container(horizontal=True):
         open_only = st.toggle(
             "Open jobs only",
             value=True,
             key="resume_filter_open_only",
             help="Exclude closed, rejected, draft, and on-hold jobs.",
-            on_change=_clear_resume_results,
-            persist_state="session",
-        )
-        referral_only = st.toggle(
-            "Referral-enabled only",
-            value=False,
-            key="resume_filter_referral_only",
-            help="Include only jobs that allow employee referrals.",
             on_change=_clear_resume_results,
             persist_state="session",
         )
@@ -394,7 +368,6 @@ def render_resume_match() -> None:
                 st.session_state["resume_match_summary"] = match_prepared_resume(
                     prepared,
                     open_only=open_only,
-                    referral_only=referral_only,
                     cache_hit=cache_hit,
                 )
                 status.update(label="Resume analysis complete", state="complete", expanded=False)
@@ -407,14 +380,6 @@ def render_resume_match() -> None:
         return
 
     _render_candidate(summary)
-    timing_text = " · ".join(
-        f"{label.replace('_', ' ').title()}: {seconds:.2f}s"
-        for label, seconds in summary.timings.items()
-    )
-    if summary.cache_hit:
-        timing_text = f"Candidate cache reused · {timing_text}"
-    if timing_text:
-        st.caption(timing_text)
     st.subheader("Top job matches")
     if not summary.matches:
         st.info(
@@ -441,7 +406,7 @@ def render_job_dashboard() -> None:
     st.write("Browse the current ATS snapshot stored in the TalentFit job index.")
 
     st.subheader("Job filters")
-    st.caption("Filters are applied before the available jobs are displayed.")
+    st.caption("India jobs only. Filters are applied before jobs are displayed.")
     with st.container(horizontal=True):
         open_only = st.toggle(
             "Open jobs only",
@@ -450,32 +415,18 @@ def render_job_dashboard() -> None:
             help="Exclude closed, rejected, draft, and on-hold jobs.",
             persist_state="session",
         )
-        referral_only = st.toggle(
-            "Referral-enabled only",
-            value=False,
-            key="dashboard_filter_referral_only",
-            help="Include only jobs that allow employee referrals.",
-            persist_state="session",
-        )
 
     try:
         store = JobVectorStore()
         indexed_count = store.count_jobs()
-        jobs = store.get_jobs(
-            open_only=open_only,
-            referral_only=referral_only,
-        )
+        jobs = store.get_jobs(open_only=open_only, india_only=True)
     except Exception as exc:
         st.error(f"Could not read the job collection: {exc}", icon=":material/error:")
         return
 
-    open_position_count = sum(job.open_positions or 0 for job in jobs)
-    referral_count = sum(job.referral_allowed for job in jobs)
     with st.container(horizontal=True):
         st.metric("Indexed jobs", indexed_count, border=True)
         st.metric("Matching jobs", len(jobs), border=True)
-        st.metric("Open positions", open_position_count, border=True)
-        st.metric("Referral-enabled", referral_count, border=True)
 
     if not jobs:
         st.info(
@@ -493,12 +444,9 @@ def render_job_dashboard() -> None:
         key="indexed_jobs_dashboard",
         column_config={
             "Reference Number": st.column_config.TextColumn(pinned=True),
-            "Job Created Date": st.column_config.DateColumn(format="DD-MMM-YYYY"),
             "Job Title": st.column_config.TextColumn(pinned=True),
-            "Open Positions": st.column_config.NumberColumn(format="%d"),
             "Min Experience": st.column_config.NumberColumn(format="%.1f years"),
             "Max Experience": st.column_config.NumberColumn(format="%.1f years"),
-            "Referral Enabled": st.column_config.CheckboxColumn(),
         },
     )
 
@@ -520,8 +468,6 @@ def run_app() -> None:
             "Choose a section",
             ["ATS Upload", "Job Dashboard", "Resume Match"],
         )
-        st.caption(f"Chat model: {OLLAMA_MODEL}")
-        st.caption(f"Embedding model: {EMBEDDING_MODEL}")
 
     if page == "ATS Upload":
         render_ats_upload()

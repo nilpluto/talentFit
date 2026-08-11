@@ -10,7 +10,7 @@ from app.ats_service import (
     dataframe_to_jobs,
     load_jobs,
     normalize_job_status,
-    normalize_referral_flag,
+    parse_experience_columns,
     parse_experience_range,
     read_ats_file,
 )
@@ -25,15 +25,16 @@ def test_load_sample_csv_as_jobs() -> None:
     assert len(jobs) == 4
     assert jobs[0].job_id == "18846"
     assert jobs[0].title == "Power BI Developer"
-    assert jobs[0].created_date == "02-Jan-2026"
-    assert jobs[0].open_positions == 1
     assert jobs[0].designation == "Senior Lead Data Analyst"
     assert jobs[0].geo == "India"
     assert jobs[0].business_unit == "FinTech"
-    assert jobs[0].mandatory_skills[:2] == ["power bi", "power bi reports"]
+    assert jobs[0].mandatory_skills == [
+        "power bi",
+        "business intelligence developer",
+        "power query",
+    ]
     assert jobs[0].min_experience_years == 5
     assert jobs[0].max_experience_years is None
-    assert jobs[0].referral_allowed is False
     assert jobs[0].status == "rejected"
     assert jobs[0].description == ""
 
@@ -73,6 +74,8 @@ def test_reject_unsupported_file_type(tmp_path: Path) -> None:
         ("4-7 years", (4.0, 7.0)),
         ("5+ years", (5.0, None)),
         ("3 years", (3.0, 3.0)),
+        ("6 Months", (0.5, 0.5)),
+        ("6-18 months", (0.5, 1.5)),
         (None, (None, None)),
         ("Not specified", (None, None)),
     ],
@@ -81,6 +84,44 @@ def test_parse_experience_range(
     raw_value: object, expected: tuple[float | None, float | None]
 ) -> None:
     assert parse_experience_range(raw_value) == expected
+
+
+@pytest.mark.parametrize(
+    ("minimum_value", "maximum_value", "expected"),
+    [
+        ("2 to 5yrs", None, (2.0, 5.0)),
+        ("2-5 years", "", (2.0, 5.0)),
+        ("2 years", "5 years", (2.0, 5.0)),
+        (2, 5, (2.0, 5.0)),
+        ("5+ years", None, (5.0, None)),
+        (None, "up to 5 years", (None, 5.0)),
+        (None, "2 to 5yrs", (2.0, 5.0)),
+    ],
+)
+def test_parse_experience_columns(
+    minimum_value: object,
+    maximum_value: object,
+    expected: tuple[float | None, float | None],
+) -> None:
+    assert parse_experience_columns(minimum_value, maximum_value) == expected
+
+
+def test_dataframe_accepts_experience_range_in_minimum_column() -> None:
+    dataframe = pd.DataFrame(
+        [
+            {
+                "Reference Number": "JOB-RANGE",
+                "Job Title": "Backend Engineer",
+                "Min Experience": "2 to 5yrs",
+                "Max Experience": None,
+            }
+        ]
+    )
+
+    job = dataframe_to_jobs(dataframe)[0]
+
+    assert job.min_experience_years == 2
+    assert job.max_experience_years == 5
 
 
 def test_clean_description_removes_html_and_extra_whitespace() -> None:
@@ -104,14 +145,6 @@ def test_normalize_job_status(raw_status: object, expected: str) -> None:
     assert normalize_job_status(raw_status) == expected
 
 
-@pytest.mark.parametrize(
-    ("raw_flag", "expected"),
-    [(True, True), ("YES", True), (1, True), (False, False), ("no", False), (None, False)],
-)
-def test_normalize_referral_flag(raw_flag: object, expected: bool) -> None:
-    assert normalize_referral_flag(raw_flag) is expected
-
-
 def test_header_aliases_extra_columns_and_missing_values_become_clean_job() -> None:
     dataframe = pd.DataFrame(
         [
@@ -123,7 +156,6 @@ def test_header_aliases_extra_columns_and_missing_values_become_clean_job() -> N
                 "mandatory_skills": "AWS; K8s; ",
                 "Geo": None,
                 "Job Status": "Active",
-                "Refferal Enabled": "Y",
                 "Unrelated Export Column": "ignored",
             }
         ]
@@ -138,4 +170,40 @@ def test_header_aliases_extra_columns_and_missing_values_become_clean_job() -> N
     assert job.description == ""
     assert job.geo is None
     assert job.status == "open"
-    assert job.referral_allowed is True
+
+
+def test_ats_columns_are_mapped_by_header_not_excel_position() -> None:
+    dataframe = pd.DataFrame(
+        [
+            [
+                "ignored",
+                "Java; SpringBoot",
+                "Backend Engineer",
+                7,
+                "India",
+                "JOB-SHUFFLED",
+                "Active",
+                3,
+            ]
+        ],
+        columns=[
+            "Unrelated First Column",
+            "Mandatory Skills",
+            "Job Title",
+            "Max Experience",
+            "Geo",
+            "Reference Number",
+            "Job Status",
+            "Min Experience",
+        ],
+    )
+
+    job = dataframe_to_jobs(dataframe)[0]
+
+    assert job.job_id == "JOB-SHUFFLED"
+    assert job.title == "Backend Engineer"
+    assert job.geo == "India"
+    assert job.mandatory_skills == ["java", "spring boot"]
+    assert job.min_experience_years == 3
+    assert job.max_experience_years == 7
+    assert job.status == "open"

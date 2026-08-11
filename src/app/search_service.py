@@ -19,7 +19,6 @@ def search_candidate_jobs(
     embedder: CandidateEmbedder = embed_text,
     limit: int = TOP_K_RETRIEVAL,
     open_only: bool = False,
-    referral_only: bool = False,
 ) -> list[JobSearchHit]:
     """Embed a candidate and retrieve the nearest indexed jobs."""
     candidate_document = build_candidate_document(candidate)
@@ -29,5 +28,5 @@ def search_candidate_jobs(
         candidate_embedding,
         limit=limit,
         open_only=open_only,
-        referral_only=referral_only,
+        india_only=True,
     )

@@ -16,6 +16,8 @@ class IndexingSummary:
     """Summary of a completed ATS indexing operation."""
 
     loaded_jobs: int
+    eligible_jobs: int
+    excluded_jobs: int
     indexed_jobs: int
     inserted_jobs: int
     updated_jobs: int
@@ -25,7 +27,7 @@ class IndexingSummary:
 
 
 EmbeddingFunction = Callable[[list[str]], list[list[float]]]
-INDEX_SCHEMA_VERSION = "2"
+INDEX_SCHEMA_VERSION = "5"
 
 
 def build_content_hash(job_json: str, document: str) -> str:
@@ -40,8 +42,13 @@ def index_jobs(
     vector_store: JobVectorStore | None = None,
     embedder: EmbeddingFunction = embed_texts,
 ) -> IndexingSummary:
-    """Load an ATS export and upsert all its jobs into ChromaDB."""
-    jobs = load_jobs(file_path)
+    """Load an ATS snapshot and index only jobs whose Geo is India."""
+    loaded_jobs = load_jobs(file_path)
+    jobs = [
+        job
+        for job in loaded_jobs
+        if (job.geo or "").strip().casefold() == "india"
+    ]
     documents = build_job_documents(jobs)
     job_ids = [job.job_id for job in jobs]
     if len(job_ids) != len(set(job_ids)):
@@ -87,7 +94,9 @@ def index_jobs(
     deleted_jobs = store.delete_jobs(sorted(existing_job_ids.difference(job_ids)))
 
     return IndexingSummary(
-        loaded_jobs=len(jobs),
+        loaded_jobs=len(loaded_jobs),
+        eligible_jobs=len(jobs),
+        excluded_jobs=len(loaded_jobs) - len(jobs),
         indexed_jobs=len(jobs_to_index),
         inserted_jobs=len(insert_indexes),
         updated_jobs=len(update_indexes),

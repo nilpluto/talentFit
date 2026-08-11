@@ -72,8 +72,6 @@ def test_build_job_dashboard_dataframe_uses_supported_ats_fields() -> None:
             Job(
                 job_id="JOB-100",
                 title="Platform Engineer",
-                created_date="11-Aug-2026",
-                open_positions=2,
                 designation="Senior Engineer",
                 geo="India",
                 business_unit="Cloud",
@@ -81,16 +79,13 @@ def test_build_job_dashboard_dataframe_uses_supported_ats_fields() -> None:
                 min_experience_years=4,
                 max_experience_years=8,
                 status="open",
-                referral_allowed=True,
             )
         ]
     )
 
     assert list(dataframe.columns) == [
         "Reference Number",
-        "Job Created Date",
         "Job Title",
-        "Open Positions",
         "Designation",
         "Geo",
         "Business Unit",
@@ -98,7 +93,5 @@ def test_build_job_dashboard_dataframe_uses_supported_ats_fields() -> None:
         "Max Experience",
         "Mandatory Skills",
         "Job Status",
-        "Referral Enabled",
     ]
     assert dataframe.iloc[0]["Reference Number"] == "JOB-100"
-    assert dataframe.iloc[0]["Referral Enabled"] == True

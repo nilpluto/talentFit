@@ -59,7 +59,6 @@ def match_prepared_resume(
     retrieval_limit: int = TOP_K_RETRIEVAL,
     result_limit: int = TOP_K_RESULTS,
     open_only: bool = False,
-    referral_only: bool = False,
     cache_hit: bool = False,
     vector_store: JobVectorStore | None = None,
 ) -> ResumeMatchSummary:
@@ -75,7 +74,7 @@ def match_prepared_resume(
         prepared.candidate_embedding,
         limit=retrieval_limit,
         open_only=open_only,
-        referral_only=referral_only,
+        india_only=True,
     )
     after_search = perf_counter()
     matches = rank_job_matches(prepared.candidate, search_hits, limit=result_limit)
@@ -105,7 +104,6 @@ def match_resume(
     retrieval_limit: int = TOP_K_RETRIEVAL,
     result_limit: int = TOP_K_RESULTS,
     open_only: bool = False,
-    referral_only: bool = False,
 ) -> ResumeMatchSummary:
     """Extract a resume and return its strongest explainable job matches."""
     if retrieval_limit <= 0:
@@ -118,5 +116,4 @@ def match_resume(
         retrieval_limit=retrieval_limit,
         result_limit=result_limit,
         open_only=open_only,
-        referral_only=referral_only,
     )
