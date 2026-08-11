@@ -1,4 +1,6 @@
-# TalentFit MVP
+# Project: TalentFit
+
+**Tagline:** Find the best-fit job for every candidate.
 
 TalentFit is a local, explainable recruitment-matching application built with
 Streamlit, Ollama, and ChromaDB. It converts an ATS job export into a searchable job
@@ -388,7 +390,19 @@ TalentFit/
 The project uses Streamlit, Pydantic, Pandas, PyMuPDF, Ollama, ChromaDB,
 Beautiful Soup, OpenPyXL, and xlrd. Pytest is included as a development dependency.
 
-## Installation
+## Setup on another computer
+
+The recommended way to send TalentFit to another computer is through a private Git
+repository. You can also send the project as a ZIP file.
+
+Do not transfer the existing `venv/` directory because Python environments are specific
+to the operating system and machine. Do not include `.env`, `data/chroma/`, real ATS
+exports, or real candidate resumes. The receiving computer should create its own
+environment and index its own ATS snapshot.
+
+### 1. Transfer the project
+
+Using Git:
 
 Clone the repository and enter it:
 
@@ -397,7 +411,29 @@ git clone <your-repository-url>
 cd TalentFit
 ```
 
-Create and activate a virtual environment:
+When using a ZIP file, extract it and open a terminal in the extracted `TalentFit`
+directory instead.
+
+### 2. Install the system requirements
+
+Install:
+
+- Python 3.11 or 3.12
+- Ollama
+- Git when cloning from a repository
+
+Confirm Python and Ollama are available:
+
+```bash
+python3 --version
+ollama --version
+```
+
+On Windows, use `python --version` if the `python3` command is unavailable.
+
+### 3. Create a new Python environment
+
+macOS or Linux:
 
 ```bash
 python3 -m venv venv
@@ -411,6 +447,8 @@ python -m venv venv
 venv\Scripts\Activate.ps1
 ```
 
+### 4. Install the Python dependencies
+
 Install the project and development dependencies:
 
 ```bash
@@ -418,11 +456,24 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Create the local environment file:
+### 5. Create the local configuration
+
+macOS or Linux:
 
 ```bash
 cp .env.example .env
 ```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+The default configuration connects to Ollama on the same computer and stores ChromaDB
+under `data/chroma`.
+
+### 6. Download the Ollama models
 
 Install the default Ollama models:
 
@@ -443,6 +494,48 @@ The expected model names include:
 qwen3:1.7b
 qwen3-embedding:0.6b
 ```
+
+### 7. Start TalentFit
+
+Make sure Ollama is running. Depending on the Ollama installation, it may already be
+running as a background service. Otherwise, start it in a terminal:
+
+```bash
+ollama serve
+```
+
+Open another terminal in the project directory, activate the environment, and start
+Streamlit:
+
+macOS or Linux:
+
+```bash
+source venv/bin/activate
+streamlit run streamlit_app.py
+```
+
+Windows PowerShell:
+
+```powershell
+venv\Scripts\Activate.ps1
+streamlit run streamlit_app.py
+```
+
+Open <http://localhost:8501> if the browser does not open automatically.
+
+### 8. Verify the installation
+
+1. Open **ATS Upload**.
+2. Upload `resources/sample_ats_1.xlsx`.
+3. Confirm the preview and index the four jobs.
+4. Open **Job Dashboard** and confirm that the jobs appear.
+5. Open **Resume Match** and upload `resources/sample_resume.pdf`.
+6. Analyze the resume and confirm that match results are displayed.
+
+For smooth local use, 8 GB RAM is the practical minimum and 16 GB or more is
+recommended. A modern multi-core CPU is sufficient; Apple Silicon or an NVIDIA GPU
+improves model response time. Keep at least 5 GB of free disk space for models,
+dependencies, and the local index.
 
 ## Configuration
 
