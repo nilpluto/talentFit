@@ -1,0 +1,6 @@
+job_id,title,mandatory_skills,optional_skills,min_experience_years,max_experience_years,location,status,referral_allowed,description
+JOB-001,Java Backend Engineer,"Java; SpringBoot; Kafka","Amazon Web Services; K8s",4,7,Bengaluru,Open,true,"<p>Build backend APIs and distributed systems using Java and Spring Boot.</p>"
+JOB-002,Python Developer,"Python; Django; REST API","PostgreSQL; Docker",2,5,Hyderabad,Open,false,"<p>Develop and maintain Python web services and REST APIs.</p>"
+JOB-003,Data Analyst,"SQL; PowerBi; Excel","Python; Tableau",1,3,Pune,Open,true,"<p>Create dashboards and analyze business data.</p>"
+JOB-004,Cloud DevOps Engineer,"AWS; Docker; Kubernetes","Terraform; Jenkins",5,8,Remote,Closed,true,"<p>Operate cloud infrastructure and deployment pipelines.</p>"
+JOB-005,Frontend Engineer,"JavaScript; React; HTML; CSS",,2,4,Bengaluru,Open,false,"<p>Build accessible and responsive web interfaces.</p>"

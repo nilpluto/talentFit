@@ -149,6 +149,8 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -156,6 +158,19 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# TalentFit runtime data
+/data/chroma/
+/tmp/
+/output/
+/outputs/
+/.agents/
+
+# Local operating-system and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
 
 # Spyder project settings
 .spyderproject
