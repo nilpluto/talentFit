@@ -18,13 +18,14 @@ stay on the machine running the application. No cloud API key is required.
 - Insert new jobs, update changed jobs, skip unchanged jobs, and remove missing jobs.
 - Browse all indexed jobs from a recruiter-facing dashboard.
 - Filter dashboard and resume results by open status.
+- Search the dashboard by a full or partial Reference Number.
 - Restrict dashboard and resume matching to jobs whose normalized Geo is India.
 - Read differently structured, multi-page, text-based PDF resumes.
 - Use Qwen to extract a validated candidate profile.
 - Verify professional experience using explicit totals and non-overlapping work dates.
 - Retrieve semantically similar jobs using Ollama embeddings and ChromaDB.
 - Rank results with deterministic skill, experience, and semantic scoring.
-- Show up to three jobs with matched and missing mandatory skills.
+- Show up to five jobs with matched and missing mandatory skills.
 - Export candidate and matching results as a CSV report.
 - Cache prepared resumes during the current session for faster repeated searches.
 - Clear uploads, resume results, or the complete local job index from the UI.
@@ -60,6 +61,10 @@ The dashboard shows:
 
 Only jobs with `Geo = India` are displayed. **Open jobs only** is enabled by default.
 Both restrictions are applied directly through ChromaDB metadata.
+
+Use **Reference number** to narrow the table to a specific requisition. Search is
+case-insensitive and accepts either the complete reference or any portion of it. The
+Matching jobs metric updates with the filtered table.
 
 ### Resume Match
 
@@ -232,15 +237,27 @@ distance.
 Filters are applied **before** retrieval:
 
 - The application always requires the normalized job Geo to equal `india`.
-- **Open jobs only** includes jobs whose normalized status is exactly `open`.
+- **Open jobs only** excludes only jobs whose normalized status is `closed`. Blank,
+  unknown, rejected, draft, on-hold, and any other non-closed statuses are included.
 
-USA, missing-Geo, and other-country jobs are excluded before document creation and
-embedding, so they are not stored in ChromaDB. TalentFit retrieves up to
+USA and other-country jobs are excluded before document creation and embedding, so they
+are not stored in ChromaDB. Missing or blank Geo is treated as India. TalentFit retrieves up to
 `TOP_K_RETRIEVAL` eligible India jobs, then applies deterministic
 matching, removes jobs with no matched mandatory skill, and returns up to
-`TOP_K_RESULTS` final jobs. The defaults are 10 retrieved and at most 3 displayed. Fewer
-than three results—or no results—is valid when the mandatory-skill requirement is not
+`TOP_K_RESULTS` final jobs. The defaults are 100 retrieved and at most 5 displayed. Fewer
+than five results—or no results—is valid when the mandatory-skill requirement is not
 met.
+
+Before any skill or score calculation, TalentFit applies a hard minimum-experience gate.
+If candidate experience is below ATS Min Experience, the job is excluded. A missing
+minimum remains eligible, and a candidate exactly at the minimum passes. After this
+gate, at least one canonical mandatory skill must match before scoring proceeds.
+
+Below the displayed results, **Check another reference number** explains why any indexed
+job was selected or rejected for the current candidate. It reports the exact gate reached:
+India and status filters, semantic top 100, minimum experience, mandatory-skill evidence,
+and final rank. It reuses the prepared candidate and embedding, so it does not make an
+additional Qwen extraction call.
 
 ## Understanding the scores
 
@@ -542,8 +559,8 @@ Configuration is loaded from the project-root `.env` file:
 | `EMBEDDING_MODEL` | `qwen3-embedding:0.6b` | Job and candidate embedding model |
 | `CHROMA_PATH` | `data/chroma` | Persistent local vector database directory |
 | `COLLECTION_NAME` | `talentfit_jobs` | ChromaDB job collection name |
-| `TOP_K_RETRIEVAL` | `10` | Eligible semantic jobs retrieved before scoring |
-| `TOP_K_RESULTS` | `3` | Final ranked jobs shown and exported |
+| `TOP_K_RETRIEVAL` | `100` | Eligible semantic jobs retrieved before scoring |
+| `TOP_K_RESULTS` | `5` | Final ranked jobs shown and exported |
 
 `TOP_K_RETRIEVAL` and `TOP_K_RESULTS` must be positive integers. If a model name is
 changed, pull that model in Ollama before starting the application.
@@ -658,7 +675,7 @@ deleted. Re-upload the correct complete snapshot to restore them.
 ### No jobs appear after filtering
 
 Disable **Open jobs only**, or upload a snapshot containing jobs with `Geo = India` and
-status `open`.
+a status other than `closed`.
 
 ### Resume has no extractable text
 

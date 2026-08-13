@@ -39,12 +39,16 @@ class JobVectorStore:
         self._ensure_filter_metadata()
 
     def _ensure_filter_metadata(self) -> None:
-        """Upgrade legacy records so native status and Geo filters remain usable."""
+        """Upgrade legacy records so native availability and Geo filters remain usable."""
         sample = self._collection.get(limit=1, include=["metadatas"])
         if not sample["ids"]:
             return
         sample_metadata = (sample["metadatas"] or [{}])[0] or {}
-        if "status" in sample_metadata and "geo" in sample_metadata:
+        if (
+            "status" in sample_metadata
+            and "is_open" in sample_metadata
+            and "geo" in sample_metadata
+        ):
             return
 
         result = self._collection.get(include=["metadatas"])
@@ -55,6 +59,7 @@ class JobVectorStore:
             if isinstance(job_json, str):
                 job = Job.model_validate_json(job_json)
                 resolved["status"] = job.status
+                resolved["is_open"] = job.is_open
                 resolved["geo"] = (job.geo or "").strip().casefold()
             upgraded.append(resolved)
         if result["ids"]:
@@ -133,6 +138,7 @@ class JobVectorStore:
                     "job_json": job.model_dump_json(),
                     "content_hash": content_hash,
                     "status": job.status,
+                    "is_open": job.is_open,
                     "geo": (job.geo or "").strip().casefold(),
                 }
                 for job, content_hash in zip(jobs, resolved_hashes, strict=True)
@@ -159,7 +165,7 @@ class JobVectorStore:
     ) -> dict[str, Any] | None:
         filters: list[dict[str, Any]] = []
         if open_only:
-            filters.append({"status": "open"})
+            filters.append({"is_open": True})
         if india_only:
             filters.append({"geo": "india"})
         if len(filters) == 1:

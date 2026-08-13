@@ -3,19 +3,23 @@
 ## What this does
 
 The dashboard shows India jobs currently available in the ChromaDB index without
-requiring a resume. Jobs from other countries and jobs with no Geo are never indexed.
+requiring a resume. Missing Geo is assumed to be India; other countries are not indexed.
 
 ## User steps
 
 1. Index an ATS file.
 2. Open **Job Dashboard**.
-3. Leave **Open jobs only** enabled to hide unavailable jobs.
-4. Review the metrics and job table.
+3. Leave **Open jobs only** enabled to hide only jobs whose status is `closed`.
+4. Enter a full or partial **Reference Number** when looking for a specific requisition.
+5. Review the metrics and job table.
 
 ## Dashboard information
 
 - Total indexed jobs
 - Jobs matching the selected filters
+- Case-insensitive full or partial Reference Number search
+- Open-job behavior where blank, unknown, rejected, draft, on-hold, and other
+  non-closed statuses remain visible
 - The 9 supported ATS fields for each job
 
 ## Simple flow
@@ -23,6 +27,7 @@ requiring a resume. Jobs from other countries and jobs with no Geo are never ind
 ```text
 Geo = India
   -> Open jobs toggle
+  -> optional Reference Number search
   -> ChromaDB metadata filter
   -> matching indexed jobs
   -> dashboard metrics and table

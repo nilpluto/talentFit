@@ -5,6 +5,7 @@ import pytest
 from app.matcher import (
     calculate_experience_score,
     match_candidate_to_job,
+    meets_minimum_experience,
     rank_job_matches,
 )
 from app.models import CandidateProfile, Job
@@ -62,6 +63,26 @@ def test_match_uses_canonical_variants_for_mandatory_skills() -> None:
     assert result.mandatory_score == 100
 
 
+def test_professional_role_can_evidence_an_equivalent_mandatory_skill() -> None:
+    candidate = CandidateProfile(
+        name="Reliability Candidate",
+        experience_years=8,
+        skills=["kubernetes", "aws"],
+        roles=["Senior Site Reliability Engineer"],
+    )
+    job = Job(
+        job_id="JOB-SRE",
+        title="Site Reliability Engineer",
+        mandatory_skills=["sre"],
+        min_experience_years=7,
+    )
+
+    result = match_candidate_to_job(candidate, job, semantic_score=0.8)
+
+    assert result.matched_mandatory == ["sre"]
+    assert result.missing_mandatory == []
+
+
 @pytest.mark.parametrize(
     ("candidate_years", "minimum", "maximum", "expected"),
     [
@@ -85,6 +106,28 @@ def test_experience_scoring(
     )
 
     assert calculate_experience_score(candidate_years, job) == expected
+
+
+@pytest.mark.parametrize(
+    ("candidate_years", "minimum", "expected"),
+    [
+        (3, 4, False),
+        (4, 4, True),
+        (5, 4, True),
+        (0, None, True),
+    ],
+)
+def test_minimum_experience_gate(
+    candidate_years: float, minimum: float | None, expected: bool
+) -> None:
+    candidate = CandidateProfile(name="Candidate", experience_years=candidate_years)
+    job = Job(
+        job_id="JOB-MINIMUM",
+        title="Engineer",
+        min_experience_years=minimum,
+    )
+
+    assert meets_minimum_experience(candidate, job) is expected
 
 
 def test_jobs_without_skill_requirements_do_not_penalize_candidate(
@@ -147,6 +190,50 @@ def test_rank_returns_no_jobs_when_no_mandatory_skills_match(
     ]
 
     assert rank_job_matches(candidate, hits, limit=3) == []
+
+
+def test_rank_excludes_job_before_scoring_when_candidate_is_below_minimum() -> None:
+    candidate = CandidateProfile(
+        name="Junior Candidate",
+        experience_years=3,
+        skills=["java", "spring boot"],
+    )
+    hit = JobSearchHit(
+        job=Job(
+            job_id="JOB-SENIOR",
+            title="Senior Java Engineer",
+            mandatory_skills=["java", "spring boot"],
+            min_experience_years=4,
+        ),
+        document="document",
+        distance=0,
+        semantic_score=1,
+    )
+
+    assert rank_job_matches(candidate, [hit], limit=3) == []
+
+
+def test_rank_includes_job_when_candidate_meets_minimum_exactly() -> None:
+    candidate = CandidateProfile(
+        name="Qualified Candidate",
+        experience_years=4,
+        skills=["java"],
+    )
+    hit = JobSearchHit(
+        job=Job(
+            job_id="JOB-QUALIFIED",
+            title="Java Engineer",
+            mandatory_skills=["java"],
+            min_experience_years=4,
+        ),
+        document="document",
+        distance=0.1,
+        semantic_score=0.9,
+    )
+
+    assert [match.job.job_id for match in rank_job_matches(candidate, [hit])] == [
+        "JOB-QUALIFIED"
+    ]
 
 
 def test_reject_invalid_semantic_score(candidate: CandidateProfile) -> None:

@@ -135,3 +135,24 @@ def test_candidate_extraction_uses_verified_employment_periods() -> None:
     )
 
     assert 11 <= candidate.experience_years <= 12
+
+
+def test_candidate_extraction_recovers_skills_from_full_resume_evidence() -> None:
+    client = FakeChatClient(
+        json.dumps(
+            {
+                "name": "Platform Candidate",
+                "experience_years": 8,
+                "skills": ["DevOps"],
+                "roles": [],
+                "summary": "Platform engineer.",
+            }
+        )
+    )
+
+    candidate = extract_candidate_profile(
+        "Senior Site Reliability Engineer operating Kubernetes on AWS.",
+        client=client,
+    )
+
+    assert candidate.skills == ["devops", "aws", "kubernetes", "sre"]

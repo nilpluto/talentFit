@@ -137,25 +137,35 @@ def test_legacy_records_gain_status_filter_metadata() -> None:
     assert [hit.job.job_id for hit in hits] == ["LEGACY"]
 
 
-def test_get_jobs_applies_open_filter(vector_store: JobVectorStore) -> None:
+def test_open_filter_includes_every_status_except_closed(
+    vector_store: JobVectorStore,
+) -> None:
     jobs = [
         Job(job_id="OPEN-ONE", title="Open one", status="open"),
-        Job(job_id="OPEN-TWO", title="Open two", status="open"),
+        Job(job_id="UNKNOWN", title="Unknown", status="unknown"),
+        Job(job_id="BLANK", title="Blank", status=""),
+        Job(job_id="REJECTED", title="Rejected", status="rejected"),
+        Job(job_id="DRAFT", title="Draft", status="draft"),
+        Job(job_id="HOLD", title="On hold", status="on hold"),
         Job(job_id="CLOSED", title="Closed", status="closed"),
     ]
     vector_store.upsert_jobs(
         jobs,
         [job.title for job in jobs],
-        [[1.0, 0.0], [0.9, 0.1], [0.8, 0.2]],
+        [[1.0, float(index)] for index in range(len(jobs))],
     )
 
     assert [job.job_id for job in vector_store.get_jobs(open_only=True)] == [
+        "BLANK",
+        "DRAFT",
+        "HOLD",
         "OPEN-ONE",
-        "OPEN-TWO",
+        "REJECTED",
+        "UNKNOWN",
     ]
 
 
-def test_india_filter_excludes_other_and_missing_geographies(
+def test_india_filter_excludes_other_geographies_and_includes_missing_geo(
     vector_store: JobVectorStore,
 ) -> None:
     jobs = [
@@ -173,13 +183,14 @@ def test_india_filter_excludes_other_and_missing_geographies(
     assert [job.job_id for job in vector_store.get_jobs(india_only=True)] == [
         "INDIA",
         "INDIA-UPPER",
+        "MISSING",
     ]
-    assert [
+    assert {
         hit.job.job_id
         for hit in vector_store.search_jobs(
             [1.0, 0.0], limit=10, open_only=True, india_only=True
         )
-    ] == ["INDIA", "INDIA-UPPER"]
+    } == {"INDIA", "INDIA-UPPER", "MISSING"}
 
 
 def test_reject_invalid_search_arguments(vector_store: JobVectorStore) -> None:

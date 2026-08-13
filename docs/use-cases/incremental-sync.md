@@ -23,8 +23,9 @@ Indexed before but absent from the latest file
 TalentFit creates a content hash from the normalized job and its searchable document.
 This avoids generating another embedding for an unchanged job.
 
-Only India jobs participate in synchronization. Non-India and missing-Geo rows are not
-embedded or stored. Any older non-India records are deleted on the next ATS upload.
+Only India jobs participate in synchronization, with missing or blank Geo assumed to be
+India. Other-country rows are not embedded or stored. Any older non-India records are
+deleted on the next ATS upload.
 
 ## User steps
 

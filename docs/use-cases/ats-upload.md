@@ -31,7 +31,8 @@ ATS file
 - The other supported ATS fields are optional.
 - Extra columns are ignored.
 - Only jobs whose normalized Geo is `india` are embedded and indexed.
-- Other countries and missing-Geo rows are reported as ignored.
+- Missing or blank Geo values are treated as India.
+- Other countries are reported as ignored.
 - Duplicate reference numbers stop the upload with a clear error.
 - HTML and unrelated descriptions are not indexed.
 - The upload becomes the current ATS snapshot.

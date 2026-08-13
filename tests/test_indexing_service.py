@@ -198,7 +198,7 @@ def test_non_india_jobs_are_not_embedded_or_indexed(
     )
 
     assert summary.loaded_jobs == 3
-    assert summary.eligible_jobs == 1
-    assert summary.excluded_jobs == 2
-    assert vector_store.list_job_ids() == ["INDIA"]
-    assert len(embedded_documents) == 1
+    assert summary.eligible_jobs == 2
+    assert summary.excluded_jobs == 1
+    assert vector_store.list_job_ids() == ["INDIA", "MISSING"]
+    assert len(embedded_documents) == 2

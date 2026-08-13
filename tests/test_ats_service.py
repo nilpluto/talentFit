@@ -168,7 +168,7 @@ def test_header_aliases_extra_columns_and_missing_values_become_clean_job() -> N
     assert job.mandatory_skills == ["aws", "kubernetes"]
     assert job.optional_skills == []
     assert job.description == ""
-    assert job.geo is None
+    assert job.geo == "India"
     assert job.status == "open"
 
 

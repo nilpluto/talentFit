@@ -6,7 +6,12 @@ from pathlib import Path
 
 from app.models import CandidateProfile, Job, MatchResult
 from app.resume_matching_service import ResumeMatchSummary
-from app.ui import build_job_dashboard_dataframe, build_match_report_csv, persist_upload
+from app.ui import (
+    build_job_dashboard_dataframe,
+    build_match_report_csv,
+    filter_jobs_by_reference,
+    persist_upload,
+)
 
 
 class FakeUpload:
@@ -95,3 +100,17 @@ def test_build_job_dashboard_dataframe_uses_supported_ats_fields() -> None:
         "Job Status",
     ]
     assert dataframe.iloc[0]["Reference Number"] == "JOB-100"
+
+
+def test_filter_jobs_by_full_or_partial_reference_number() -> None:
+    jobs = [
+        Job(job_id="REQ-18846", title="First", geo="India"),
+        Job(job_id="REQ-20001", title="Second", geo="India"),
+        Job(job_id="IND-18847", title="Third", geo="India"),
+    ]
+
+    assert filter_jobs_by_reference(jobs, "") == jobs
+    assert filter_jobs_by_reference(jobs, "  req-18846  ") == [jobs[0]]
+    assert filter_jobs_by_reference(jobs, "REQ") == jobs[:2]
+    assert filter_jobs_by_reference(jobs, "1884") == [jobs[0], jobs[2]]
+    assert filter_jobs_by_reference(jobs, "missing") == []

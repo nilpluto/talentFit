@@ -45,7 +45,7 @@ def test_build_document_handles_missing_optional_values() -> None:
 
     assert "Mandatory Skills: None specified" in document
     assert "Experience: Not specified" in document
-    assert "Geo: Not specified" in document
+    assert "Geo: India" in document
     assert "Business Unit: Not specified" in document
 
 

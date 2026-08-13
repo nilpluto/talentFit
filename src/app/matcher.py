@@ -14,6 +14,12 @@ EXPERIENCE_WEIGHT = 0.15
 SEMANTIC_WEIGHT = 0.20
 
 
+def meets_minimum_experience(candidate: CandidateProfile, job: Job) -> bool:
+    """Return whether a candidate passes the job's hard minimum-experience gate."""
+    minimum = job.min_experience_years
+    return minimum is None or candidate.experience_years >= minimum
+
+
 def _skill_breakdown(
     candidate_skills: set[str], required_skills: list[str]
 ) -> tuple[list[str], list[str], float]:
@@ -56,7 +62,9 @@ def match_candidate_to_job(
     if not 0 <= semantic_score <= 1:
         raise ValueError("semantic_score must be between 0 and 1")
 
-    candidate_skills = set(normalize_skills(candidate.skills))
+    # Professional roles are valid evidence when the ATS expresses a discipline as a
+    # mandatory skill, such as "SRE" versus "Site Reliability Engineer".
+    candidate_skills = set(normalize_skills([*candidate.skills, *candidate.roles]))
     matched_mandatory, missing_mandatory, mandatory_score = _skill_breakdown(
         candidate_skills, job.mandatory_skills
     )
@@ -96,9 +104,12 @@ def rank_job_matches(
     if limit <= 0:
         raise ValueError("Result limit must be greater than zero")
 
+    eligible_hits = [
+        hit for hit in search_hits if meets_minimum_experience(candidate, hit.job)
+    ]
     matches = [
         match_candidate_to_job(candidate, hit.job, hit.semantic_score)
-        for hit in search_hits
+        for hit in eligible_hits
     ]
     matches = [match for match in matches if match.matched_mandatory]
     matches.sort(

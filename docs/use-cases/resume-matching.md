@@ -3,7 +3,7 @@
 ## What this does
 
 This flow turns a text-based PDF resume into a candidate profile, finds relevant indexed
-India jobs, and returns up to three explainable matches. Jobs outside India and jobs
+India jobs, and returns up to five explainable matches. Jobs outside India and jobs
 without at least one matched mandatory skill are excluded.
 
 ## User steps
@@ -11,10 +11,13 @@ without at least one matched mandatory skill are excluded.
 1. Index an ATS file first.
 2. Open **Resume Match**.
 3. Upload a text-based PDF resume.
-4. Choose whether to search only open jobs.
+4. Choose whether to exclude closed jobs. With **Open jobs only** enabled, every status
+   other than `closed` remains eligible.
 5. Select **Analyze resume**.
-6. Review the candidate profile and up to three results.
-7. Download the CSV report if needed.
+6. Review the candidate profile and up to five results.
+7. Expand **Check another reference number** to explain why a specific indexed job was
+   selected or rejected.
+8. Download the CSV report if needed.
 
 ## Simple flow
 
@@ -26,9 +29,10 @@ Resume PDF
   -> create candidate embedding
   -> restrict Geo to India and apply the open-job filter
   -> search ChromaDB
+  -> exclude jobs when candidate experience is below ATS Min Experience
   -> score mandatory skills, experience, and semantic similarity
   -> exclude jobs with no mandatory-skill match
-  -> show up to three results and skill gaps
+  -> show up to five results and skill gaps
 ```
 
 ## Matching output
@@ -42,6 +46,38 @@ Each result shows:
 - Matched mandatory skills
 - Missing mandatory skills
 - Recruiter-facing ATS job details
+
+## Checking a specific job
+
+After analysis, expand **Check another reference number**, enter an exact Reference
+Number, and select **Explain selection**. TalentFit reuses the current candidate profile
+and embedding; it does not extract the resume or call Qwen again.
+
+The diagnostic shows where the job stopped:
+
+1. Present in the current index
+2. India job
+3. Passes the selected status filter
+4. Present in the semantic top 100
+5. Meets minimum experience
+6. Has mandatory-skill evidence
+7. Selected in the displayed top five, or its lower eligible rank
+
+The section remains open after **Explain selection** is selected so the result is
+immediately visible.
+
+## Eligibility order
+
+TalentFit applies hard eligibility checks before calculating a match score:
+
+1. The job must be indexed for India and pass the selected open-job filter.
+2. Candidate experience must be greater than or equal to ATS Min Experience. A missing
+   minimum does not exclude the job.
+3. At least one canonical mandatory skill must match.
+4. Only then are the component scores calculated and the remaining jobs ranked.
+
+A candidate may still receive an experience penalty when the job's Max Experience is
+exceeded. The hard exclusion applies only when the candidate is below Min Experience.
 
 ## What “Semantic 64%” means
 

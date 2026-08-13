@@ -17,8 +17,10 @@ from app.document_builder import format_experience
 from app.indexing_service import index_jobs
 from app.models import Job, MatchResult
 from app.resume_matching_service import (
+    JobSelectionDiagnostic,
     PreparedResume,
     ResumeMatchSummary,
+    explain_job_selection,
     match_prepared_resume,
     prepare_resume,
 )
@@ -125,7 +127,7 @@ def _render_match(position: int, match: MatchResult) -> None:
         title_column.caption(
             " · ".join(
                 [
-                    f"Reference: {match.job.job_id}",
+                    f"Reference Number: {match.job.job_id}",
                     f"Status: {match.job.status}",
                     f"Geo: {match.job.geo or 'Not specified'}",
                     f"Experience: {format_experience(match.job)}",
@@ -184,6 +186,14 @@ def build_job_dashboard_dataframe(jobs: list[Job]) -> pd.DataFrame:
     return dataframe
 
 
+def filter_jobs_by_reference(jobs: list[Job], query: str) -> list[Job]:
+    """Filter jobs by a case-insensitive full or partial reference number."""
+    normalized_query = query.strip().casefold()
+    if not normalized_query:
+        return jobs
+    return [job for job in jobs if normalized_query in job.job_id.casefold()]
+
+
 def _clear_ats_upload() -> None:
     st.session_state["ats_upload_version"] += 1
     st.session_state.pop("last_index_summary", None)
@@ -192,12 +202,22 @@ def _clear_ats_upload() -> None:
 def _clear_resume_workflow() -> None:
     st.session_state["resume_upload_version"] += 1
     st.session_state.pop("resume_match_summary", None)
+    st.session_state.pop("prepared_resume", None)
+    st.session_state.pop("job_selection_diagnostic", None)
+    st.session_state["job_diagnostic_expanded"] = False
     st.session_state["resume_cache"] = {}
 
 
 def _clear_resume_results() -> None:
     """Discard results when search criteria change."""
     st.session_state.pop("resume_match_summary", None)
+    st.session_state.pop("job_selection_diagnostic", None)
+    st.session_state["job_diagnostic_expanded"] = False
+
+
+def _open_job_diagnostic() -> None:
+    """Keep the diagnostic expander visible across the form-submit rerun."""
+    st.session_state["job_diagnostic_expanded"] = True
 
 
 def _resume_cache_key(content: bytes) -> str:
@@ -212,6 +232,57 @@ def _remember_prepared_resume(key: str, prepared: PreparedResume) -> None:
     cache[key] = prepared
     while len(cache) > 5:
         cache.pop(next(iter(cache)))
+
+
+def _gate_label(value: bool | None) -> str:
+    if value is None:
+        return "Not reached"
+    return "Pass" if value else "Fail"
+
+
+def _render_job_diagnostic(diagnostic: JobSelectionDiagnostic) -> None:
+    """Render one reference-number selection explanation."""
+    if diagnostic.outcome == "not_found":
+        st.error(diagnostic.explanation, icon=":material/search_off:")
+        return
+
+    assert diagnostic.job is not None
+    if diagnostic.outcome == "selected":
+        st.success(diagnostic.explanation, icon=":material/check_circle:")
+    elif diagnostic.outcome == "below_top_results":
+        st.info(diagnostic.explanation, icon=":material/info:")
+    else:
+        st.warning(diagnostic.explanation, icon=":material/cancel:")
+
+    st.markdown(f"**{diagnostic.job.title}** · Reference Number: {diagnostic.job.job_id}")
+    rows = [
+        {"Gate": "India job", "Result": _gate_label(diagnostic.india_passed), "Details": diagnostic.job.geo},
+        {"Gate": "Selected status filter", "Result": _gate_label(diagnostic.status_passed), "Details": diagnostic.job.status},
+        {
+            "Gate": "Semantic top 100",
+            "Result": "Pass" if diagnostic.semantic_rank is not None else "Not reached" if diagnostic.status_passed is False or diagnostic.india_passed is False else "Fail",
+            "Details": f"Rank {diagnostic.semantic_rank} · {diagnostic.semantic_score * 100:.0f}% similarity" if diagnostic.semantic_rank is not None and diagnostic.semantic_score is not None else "Not available",
+        },
+        {
+            "Gate": "Minimum experience",
+            "Result": _gate_label(diagnostic.experience_passed),
+            "Details": f"Candidate {st.session_state['resume_match_summary'].candidate.experience_years:g} years · Job {format_experience(diagnostic.job)}",
+        },
+        {
+            "Gate": "Mandatory skill evidence",
+            "Result": "Pass" if diagnostic.match and diagnostic.match.matched_mandatory else "Fail" if diagnostic.match else "Not reached",
+            "Details": _skill_text(diagnostic.match.matched_mandatory) if diagnostic.match else "Not evaluated",
+        },
+        {
+            "Gate": "Final displayed results",
+            "Result": "Pass" if diagnostic.outcome == "selected" else "Fail" if diagnostic.final_rank is not None else "Not reached",
+            "Details": f"Final rank {diagnostic.final_rank}" if diagnostic.final_rank is not None else "Not ranked",
+        },
+    ]
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    if diagnostic.match is not None:
+        st.markdown(f"**Matched mandatory:** {_skill_text(diagnostic.match.matched_mandatory)}")
+        st.markdown(f"**Missing mandatory:** {_skill_text(diagnostic.match.missing_mandatory)}")
 
 
 @st.dialog("Clear indexed jobs?", icon=":material/delete:")
@@ -301,7 +372,7 @@ def render_ats_upload() -> None:
     if summary is not None:
         st.success(
                 f"Read {summary.loaded_jobs} jobs and selected {summary.eligible_jobs} "
-                f"India jobs; {summary.excluded_jobs} non-India or missing-Geo jobs "
+                f"India jobs; {summary.excluded_jobs} non-India jobs "
                 f"were ignored. "
                 f"{summary.inserted_jobs} inserted, {summary.updated_jobs} updated, "
                 f"{summary.deleted_jobs} removed, "
@@ -314,7 +385,7 @@ def render_ats_upload() -> None:
 def render_resume_match() -> None:
     """Render resume analysis and explainable matching controls."""
     st.header("Resume Match")
-    st.write("Upload a text-based PDF resume to find up to three job matches.")
+    st.write("Upload a text-based PDF resume to find up to five job matches.")
 
     upload = st.file_uploader(
         "Resume PDF",
@@ -328,7 +399,7 @@ def render_resume_match() -> None:
             "Open jobs only",
             value=True,
             key="resume_filter_open_only",
-            help="Exclude closed, rejected, draft, and on-hold jobs.",
+            help="Exclude only jobs whose normalized status is closed.",
             on_change=_clear_resume_results,
             persist_state="session",
         )
@@ -370,6 +441,9 @@ def render_resume_match() -> None:
                     open_only=open_only,
                     cache_hit=cache_hit,
                 )
+                st.session_state["prepared_resume"] = prepared
+                st.session_state.pop("job_selection_diagnostic", None)
+                st.session_state["job_diagnostic_expanded"] = False
                 status.update(label="Resume analysis complete", state="complete", expanded=False)
         except Exception as exc:  # Surface extraction/model failures in the MVP UI.
             st.session_state.pop("resume_match_summary", None)
@@ -383,7 +457,8 @@ def render_resume_match() -> None:
     st.subheader("Top job matches")
     if not summary.matches:
         st.info(
-            "No indexed jobs matched the selected filters. Try relaxing a filter or "
+            "No eligible jobs matched the minimum-experience requirement, mandatory "
+            "skills, and selected filters. Try relaxing the open-job filter or "
             "uploading a newer ATS snapshot."
         )
         return
@@ -399,6 +474,45 @@ def render_resume_match() -> None:
         on_click="ignore",
     )
 
+    with st.expander(
+        "Check another reference number",
+        expanded=st.session_state.get("job_diagnostic_expanded", False),
+    ):
+        st.caption(
+            "Explain why an indexed job was selected or rejected for this candidate. "
+            "This reuses the current resume analysis and does not call Ollama again."
+        )
+        with st.form("job_selection_diagnostic_form", border=False):
+            reference_number = st.text_input(
+                "Reference Number",
+                placeholder="For example, 19388",
+                key="diagnostic_reference_number",
+            )
+            explain_clicked = st.form_submit_button(
+                "Explain selection",
+                icon=":material/fact_check:",
+                on_click=_open_job_diagnostic,
+            )
+        if explain_clicked:
+            prepared = st.session_state.get("prepared_resume")
+            if prepared is None:
+                st.error("Analyze the resume again before checking a job reference.")
+            elif not reference_number.strip():
+                st.warning("Enter a Reference Number.")
+            else:
+                try:
+                    st.session_state["job_selection_diagnostic"] = explain_job_selection(
+                        prepared,
+                        reference_number,
+                        summary.matches,
+                        open_only=open_only,
+                    )
+                except Exception as exc:
+                    st.error(f"Could not explain this job: {exc}", icon=":material/error:")
+        diagnostic = st.session_state.get("job_selection_diagnostic")
+        if diagnostic is not None:
+            _render_job_diagnostic(diagnostic)
+
 
 def render_job_dashboard() -> None:
     """Render an availability dashboard for jobs currently indexed in Chroma."""
@@ -412,14 +526,20 @@ def render_job_dashboard() -> None:
             "Open jobs only",
             value=True,
             key="dashboard_filter_open_only",
-            help="Exclude closed, rejected, draft, and on-hold jobs.",
+            help="Exclude only jobs whose normalized status is closed.",
             persist_state="session",
+        )
+        reference_query = st.text_input(
+            "Reference Number",
+            placeholder="Enter full or partial reference",
+            key="dashboard_reference_query",
         )
 
     try:
         store = JobVectorStore()
         indexed_count = store.count_jobs()
         jobs = store.get_jobs(open_only=open_only, india_only=True)
+        jobs = filter_jobs_by_reference(jobs, reference_query)
     except Exception as exc:
         st.error(f"Could not read the job collection: {exc}", icon=":material/error:")
         return
@@ -430,8 +550,9 @@ def render_job_dashboard() -> None:
 
     if not jobs:
         st.info(
-            "No indexed jobs matched the selected filters. Try relaxing a filter or "
-            "uploading a newer ATS snapshot."
+            "No indexed jobs matched the selected filters or reference number. Try a "
+            "different reference, relax the open-job filter, or upload a newer ATS "
+            "snapshot."
         )
         return
 
@@ -459,6 +580,7 @@ def run_app() -> None:
     st.session_state.setdefault("ats_upload_version", 0)
     st.session_state.setdefault("resume_upload_version", 0)
     st.session_state.setdefault("resume_cache", {})
+    st.session_state.setdefault("job_diagnostic_expanded", False)
     st.title("TalentFit")
     st.caption("Explainable semantic matching between candidates and open roles")
 

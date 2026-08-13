@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.config import OLLAMA_HOST, OLLAMA_MODEL
 from app.models import CandidateProfile
-from app.skill_normalizer import normalize_skills
+from app.skill_normalizer import extract_known_skills_from_text, normalize_skills
 
 
 class ChatClient(Protocol):
@@ -43,7 +43,10 @@ Field rules:
 - experience_years: total professional experience as a number. Prefer an explicitly
   stated total. Otherwise calculate it from non-overlapping employment date ranges,
   ignoring education and overlapping concurrent roles. Use 0 only if unknown.
-- skills: explicitly stated technical skills, tools, platforms, and frameworks.
+- skills: technical skills, tools, platforms, frameworks, and engineering practices
+  explicitly evidenced anywhere in the resume, including employment titles and
+  responsibility descriptions. Include both an acronym and its expanded concept when
+  the resume uses either form (for example, SRE means site reliability engineering).
 - roles: explicitly stated job titles or professional roles, including titles in a
   resume header, employment entry, project description, or narrative sentence.
 - location: an explicitly stated city, region, or country, including header text;
@@ -177,7 +180,9 @@ def extract_candidate_profile(
     if not isinstance(data, dict):
         raise ValueError("Ollama candidate response must be a JSON object")
 
-    data["skills"] = normalize_skills(data.get("skills"))
+    data["skills"] = normalize_skills(
+        [*data.get("skills", []), *extract_known_skills_from_text(resume_text)]
+    )
     data["roles"] = _normalize_roles(data.get("roles", []))
 
     try:

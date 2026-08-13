@@ -100,3 +100,108 @@ def test_match_resume_rejects_invalid_limits(
             retrieval_limit=retrieval_limit,
             result_limit=result_limit,
         )
+
+
+class DiagnosticStore:
+    def __init__(self, jobs: list[Job], hits: list[JobSearchHit]) -> None:
+        self.jobs = jobs
+        self.hits = hits
+
+    def get_jobs(self) -> list[Job]:
+        return self.jobs
+
+    def search_jobs(self, embedding, *, limit, open_only, india_only):
+        assert embedding == [1.0, 0.0]
+        assert india_only is True
+        return self.hits[:limit]
+
+
+def test_explain_job_selection_reports_minimum_experience_failure() -> None:
+    candidate = CandidateProfile(
+        name="Candidate",
+        experience_years=4.5,
+        skills=["backend", "system design"],
+    )
+    job = Job(
+        job_id="19388",
+        title="Backend TA - GCC",
+        mandatory_skills=["backend", "programming and design"],
+        min_experience_years=9,
+        max_experience_years=12,
+        status="open",
+    )
+    hit = JobSearchHit(
+        job=job,
+        document="Backend architect",
+        distance=0.4,
+        semantic_score=0.6,
+    )
+
+    diagnostic = service.explain_job_selection(
+        service.PreparedResume(candidate=candidate, candidate_embedding=[1.0, 0.0]),
+        " 19388 ",
+        [],
+        open_only=True,
+        vector_store=DiagnosticStore([job], [hit]),
+    )
+
+    assert diagnostic.outcome == "minimum_experience"
+    assert diagnostic.semantic_rank == 1
+    assert diagnostic.experience_passed is False
+    assert diagnostic.match is not None
+    assert diagnostic.match.matched_mandatory == ["backend"]
+    assert "4.5 years" in diagnostic.explanation
+    assert "9-year minimum" in diagnostic.explanation
+
+
+def test_explain_job_selection_reports_selected_rank() -> None:
+    candidate = CandidateProfile(
+        name="Candidate",
+        experience_years=8,
+        skills=["sre"],
+    )
+    job = Job(
+        job_id="19745",
+        title="Site Reliability Engineer",
+        mandatory_skills=["sre"],
+        min_experience_years=7,
+        status="open",
+    )
+    hit = JobSearchHit(
+        job=job,
+        document="Site reliability engineer",
+        distance=0.1,
+        semantic_score=0.9,
+    )
+    selected = service.match_candidate_to_job(candidate, job, 0.9)
+
+    diagnostic = service.explain_job_selection(
+        service.PreparedResume(candidate=candidate, candidate_embedding=[1.0, 0.0]),
+        "19745",
+        [selected],
+        open_only=True,
+        vector_store=DiagnosticStore([job], [hit]),
+    )
+
+    assert diagnostic.outcome == "selected"
+    assert diagnostic.final_rank == 1
+    assert diagnostic.experience_passed is True
+    assert diagnostic.match is not None
+    assert diagnostic.match.matched_mandatory == ["sre"]
+
+
+def test_explain_job_selection_reports_missing_reference() -> None:
+    prepared = service.PreparedResume(
+        candidate=CandidateProfile(name="Candidate", experience_years=5),
+        candidate_embedding=[1.0, 0.0],
+    )
+
+    diagnostic = service.explain_job_selection(
+        prepared,
+        "UNKNOWN",
+        [],
+        vector_store=DiagnosticStore([], []),
+    )
+
+    assert diagnostic.outcome == "not_found"
+    assert diagnostic.job is None

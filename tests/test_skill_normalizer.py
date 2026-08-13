@@ -2,7 +2,12 @@
 
 import pytest
 
-from app.skill_normalizer import normalize_skill, normalize_skills, skills_match
+from app.skill_normalizer import (
+    extract_known_skills_from_text,
+    normalize_skill,
+    normalize_skills,
+    skills_match,
+)
 
 
 @pytest.mark.parametrize(
@@ -23,6 +28,10 @@ from app.skill_normalizer import normalize_skill, normalize_skills, skills_match
         ("MS Fabric", "microsoft fabric"),
         ("GenAI", "generative ai"),
         ("playwrite", "playwright"),
+        ("SRE", "sre"),
+        ("Site Reliability Engineer", "sre"),
+        ("Site Reliability Engineering", "sre"),
+        ("Dev Ops", "devops"),
     ],
 )
 def test_known_skill_variants(source: str, expected: str) -> None:
@@ -72,3 +81,21 @@ def test_same_technology_variants_match(left: str, right: str) -> None:
 )
 def test_related_but_distinct_technologies_do_not_match(left: str, right: str) -> None:
     assert not skills_match(left, right)
+
+
+def test_extract_known_skills_from_unstructured_resume_text() -> None:
+    text = """
+    Senior Site Reliability Engineer
+    Operated Kubernetes services on Amazon Web Services and created Power BI reports.
+    """
+
+    assert extract_known_skills_from_text(text) == [
+        "aws",
+        "kubernetes",
+        "power bi",
+        "sre",
+    ]
+
+
+def test_text_extraction_does_not_match_alias_inside_an_unrelated_word() -> None:
+    assert extract_known_skills_from_text("Maintained internal services") == []

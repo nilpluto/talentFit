@@ -25,6 +25,10 @@ _SKILL_ALIASES = {
     "ci/cd": "ci/cd",
     "ci cd": "ci/cd",
     "continuous integration and continuous delivery": "ci/cd",
+    "development operations": "devops",
+    "dev ops": "devops",
+    "devops": "devops",
+    "devops engineer": "devops",
     "gcp": "gcp",
     "gen ai": "generative ai",
     "genai": "generative ai",
@@ -72,9 +76,21 @@ _SKILL_ALIASES = {
     "servicenow development": "servicenow",
     "springboot": "spring boot",
     "spring boot": "spring boot",
+    "site reliability": "sre",
+    "site reliability engineer": "sre",
+    "site reliability engineering": "sre",
+    "senior site reliability engineer": "sre",
+    "sre": "sre",
+    "sre engineer": "sre",
     "type script": "typescript",
     "typescript": "typescript",
 }
+
+
+def _text_contains_alias(text: str, alias: str) -> bool:
+    """Return whether an alias appears as a complete phrase in resume text."""
+    escaped = re.escape(alias).replace(r"\ ", r"\s+")
+    return re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text) is not None
 
 
 def _compact_skill(skill: str) -> str:
@@ -112,6 +128,24 @@ def normalize_skills(skills: Iterable[str | None] | None) -> list[str]:
             seen.add(normalized)
 
     return normalized_skills
+
+
+def extract_known_skills_from_text(text: str | None) -> list[str]:
+    """Recover canonical skills explicitly mentioned anywhere in resume text.
+
+    This deterministic pass complements LLM extraction. It is intentionally limited
+    to the known alias vocabulary so related words do not create unsupported skills.
+    """
+    if text is None or not text.strip():
+        return []
+
+    searchable = _WHITESPACE.sub(" ", text).casefold()
+    detected = [
+        canonical
+        for alias, canonical in _SKILL_ALIASES.items()
+        if _text_contains_alias(searchable, alias)
+    ]
+    return normalize_skills(detected)
 
 
 def skills_match(left: str | None, right: str | None) -> bool:
