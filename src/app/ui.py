@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from app.ats_service import ats_preview, read_ats_file
+from app.candidate_extractor import CANDIDATE_EXTRACTION_VERSION
 from app.config import EMBEDDING_MODEL, OLLAMA_MODEL
 from app.document_builder import format_experience
 from app.indexing_service import index_jobs
@@ -221,9 +222,12 @@ def _open_job_diagnostic() -> None:
 
 
 def _resume_cache_key(content: bytes) -> str:
-    """Bind cached analysis to both file content and configured models."""
+    """Bind cached analysis to file content, models, and extraction policy."""
     digest = hashlib.sha256(content).hexdigest()
-    return f"{digest}:{OLLAMA_MODEL}:{EMBEDDING_MODEL}"
+    return (
+        f"{digest}:{OLLAMA_MODEL}:{EMBEDDING_MODEL}:"
+        f"extractor-{CANDIDATE_EXTRACTION_VERSION}"
+    )
 
 
 def _remember_prepared_resume(key: str, prepared: PreparedResume) -> None:

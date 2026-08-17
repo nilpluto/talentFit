@@ -8,6 +8,7 @@ import pytest
 from app.candidate_extractor import (
     EmploymentPeriod,
     calculate_employment_years,
+    extract_explicit_experience_years,
     extract_candidate_profile,
     resolve_experience_years,
 )
@@ -109,6 +110,40 @@ def test_explicit_total_blocks_education_dates_from_inflating_experience() -> No
         periods=periods_with_education_mistake,
         current=date(2026, 8, 11),
     ) == 11
+
+
+def test_written_explicit_experience_is_recognized() -> None:
+    resume_text = "With more than ten years of experience, I design distributed systems."
+
+    assert extract_explicit_experience_years(resume_text) == 10
+    assert resolve_experience_years(
+        resume_text,
+        llm_years=14,
+        periods=[EmploymentPeriod(start_date="01/2014", end_date="07/2018")],
+        current=date(2026, 8, 13),
+    ) == 10
+
+
+def test_incomplete_periods_do_not_replace_consistent_llm_total() -> None:
+    periods = [EmploymentPeriod(start_date="01/2014", end_date="07/2018")]
+
+    assert resolve_experience_years(
+        "Experienced software architect.",
+        llm_years=14,
+        periods=periods,
+        current=date(2026, 8, 13),
+    ) == 14
+
+
+def test_complete_periods_verify_close_llm_total() -> None:
+    periods = [EmploymentPeriod(start_date="01/2020", end_date=None)]
+
+    assert resolve_experience_years(
+        "Experienced engineer.",
+        llm_years=6,
+        periods=periods,
+        current=date(2026, 8, 13),
+    ) == 6.7
 
 
 def test_candidate_extraction_uses_verified_employment_periods() -> None:

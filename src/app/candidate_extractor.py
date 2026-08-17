@@ -13,6 +13,9 @@ from app.models import CandidateProfile
 from app.skill_normalizer import extract_known_skills_from_text, normalize_skills
 
 
+CANDIDATE_EXTRACTION_VERSION = "2"
+
+
 class ChatClient(Protocol):
     """Minimal Ollama chat interface used by candidate extraction."""
 
@@ -66,15 +69,44 @@ _EXPLICIT_EXPERIENCE_PATTERNS = [
     re.compile(r"(?i)\btotal\s+(?:professional\s+)?experience\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*\+?\s*years?\b"),
     re.compile(r"(?i)\b(?:over|more than)\s+(\d+(?:\.\d+)?)\s+years?\s+(?:of\s+)?experience\b"),
 ]
+_EXPERIENCE_NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+}
+_WORD_EXPERIENCE_PATTERN = re.compile(
+    rf"(?i)\b(?:over\s+|more\s+than\s+)?"
+    rf"({'|'.join(_EXPERIENCE_NUMBER_WORDS)})\s+years?\s+"
+    rf"(?:of\s+)?(?:professional\s+)?experience\b"
+)
 _MONTH_YEAR = re.compile(r"(?i)^\s*(0?[1-9]|1[0-2])[/\-](\d{4})\s*$")
 _YEAR = re.compile(r"^\s*(\d{4})\s*$")
 
 
 def extract_explicit_experience_years(resume_text: str) -> float | None:
-    """Return a prominently stated numeric total experience, when available."""
+    """Return a prominently stated total experience, including written numbers."""
     for pattern in _EXPLICIT_EXPERIENCE_PATTERNS:
         if match := pattern.search(resume_text):
             return float(match.group(1))
+    if match := _WORD_EXPERIENCE_PATTERN.search(resume_text):
+        return float(_EXPERIENCE_NUMBER_WORDS[match.group(1).casefold()])
     return None
 
 
@@ -117,10 +149,10 @@ def resolve_experience_years(
     explicit = extract_explicit_experience_years(resume_text)
     calculated = calculate_employment_years(periods, current=current)
     if explicit is not None:
-        if calculated is not None and abs(calculated - explicit) <= 2:
-            return calculated
         return explicit
-    return calculated if calculated is not None else llm_years
+    if calculated is not None and abs(calculated - llm_years) <= 2:
+        return calculated
+    return llm_years
 
 
 def _response_content(response: object) -> str:
